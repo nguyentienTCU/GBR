@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { Mail, Lock, ArrowRight } from "lucide-react";
-import GuestOnlyRoute from "@/components/common/GuestOnlyRoute";
-import { supabase } from "@/lib/supabase";
+import { signInWithEmail } from "@/lib/auth";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -16,25 +15,21 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMessage("");
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setErrorMessage(error.message);
+    try {
+      const data = await signInWithEmail(email, password);
+      if (!data.session) {
+        setErrorMessage("No session returned.");
+      }
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Sign in failed.",
+      );
+    } finally {
       setLoading(false);
-      return;
-    }
-
-    if (!data.session) {
-      setLoading(false);
-      return;
     }
   }
 
   return (
-    <GuestOnlyRoute>
       <div className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-[#f3f4f6] px-4 py-10">
         <div className="w-full max-w-[575px]">
           <div className="overflow-hidden rounded-[20px] bg-white shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
@@ -139,6 +134,5 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
-    </GuestOnlyRoute>
   );
 }

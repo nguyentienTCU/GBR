@@ -1,9 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# import routes
-# from app.api.routes import health
-
+from app.api.routes import users
 # create app
 app = FastAPI(
     title="GBR Backend",
@@ -27,11 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -------------------------
-# Routes
-# -------------------------
-# app.include_router(health.router)
-
+app.include_router(users.router)
 
 # -------------------------
 # Root endpoint
