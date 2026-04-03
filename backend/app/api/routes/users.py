@@ -40,6 +40,8 @@ def get_users(
     return get_buyer_seller_users()
 
 
+# -------------- Admin-only user management routes --------------
+
 @router.post("/")
 def create_user(
     payload: Annotated[CreateUserRequest, Body(...)],

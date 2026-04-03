@@ -17,10 +17,10 @@ class CreateUserRequest(BaseModel):
     first_name: str
     last_name: str
     email: EmailStr
-    phone_number: str | None = None
+    phone_number: str
     password: str
     role: Role
-    company_name: str | None = None
+    company_name: str
 
 
 class UpdateUserRequest(BaseModel):
