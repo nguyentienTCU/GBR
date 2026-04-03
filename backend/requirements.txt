@@ -4,3 +4,4 @@ python-dotenv
 supabase
 pydantic-settings
 email-validator
+docusign-esign

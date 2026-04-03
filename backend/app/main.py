@@ -1,7 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from app.api.routes import users
+from app.api.routes import docusign
+
 # create app
 app = FastAPI(
     title="GBR Backend",
@@ -26,6 +29,7 @@ app.add_middleware(
 )
 
 app.include_router(users.router)
+app.include_router(docusign.router)
 
 # -------------------------
 # Root endpoint
