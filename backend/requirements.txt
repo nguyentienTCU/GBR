@@ -5,3 +5,4 @@ supabase
 pydantic-settings
 email-validator
 docusign-esign
+cryptography
