@@ -42,6 +42,12 @@ jobs:
           DOCUSIGN_AUTH_SERVER: account-d.docusign.com
           DOCUSIGN_PRIVATE_KEY_PATH: ./test-docusign-private.key
           DOCUSIGN_REDIRECT_URI: https://example.com/docusign/callback
+          SMTP_HOST: smtp.example.com
+          SMTP_PORT: 587
+          SMTP_USERNAME: test-user
+          SMTP_PASSWORD: test-password
+          SMTP_FROM_EMAIL: no-reply@example.com
+          FRONTEND_LOGIN_URL: http://localhost:3000/login
         run: python -c "from app.main import app; print(app.title)"
 
   frontend:
