@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Building2, Lock, Mail, Phone, User, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Notification } from "@/components/ui/Notification";
 import { createUser } from "@/service/users.service";
 import type { CreateUserPayload, UserRole } from "@/types/user";
 
@@ -145,7 +146,7 @@ export default function CreateUserForm() {
     try {
       const response = await createUser(trimmed);
       setSuccessMessage(
-        `User created successfully. New user id: ${response.user_id}`,
+        `User created successfully.`,
       );
       setFormData(initialFormData);
     } catch (error) {
@@ -159,6 +160,23 @@ export default function CreateUserForm() {
 
   return (
     <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_18px_40px_rgba(8,22,50,0.08)]">
+      {errorMessage ? (
+        <Notification
+          open
+          variant="error"
+          message={errorMessage}
+          onClose={() => setErrorMessage("")}
+        />
+      ) : null}
+      {successMessage ? (
+        <Notification
+          open
+          variant="success"
+          message={successMessage}
+          onClose={() => setSuccessMessage("")}
+        />
+      ) : null}
+
       <div className="relative overflow-hidden bg-[#071633] px-5 py-6 text-white sm:px-8 sm:py-8">
         <div className="absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-white/10 sm:h-28 sm:w-28" />
 
@@ -263,18 +281,6 @@ export default function CreateUserForm() {
             onChange={(value) => updateField("company_name", value)}
             icon={Building2}
           />
-
-          {errorMessage ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {errorMessage}
-            </div>
-          ) : null}
-
-          {successMessage ? (
-            <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-              {successMessage}
-            </div>
-          ) : null}
 
           <div className="flex justify-stretch sm:justify-end">
             <Button

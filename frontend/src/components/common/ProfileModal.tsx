@@ -232,10 +232,17 @@ export function ProfileModal({ open, onClose }: ProfileModalProps) {
         message: "Your profile was updated successfully.",
       });
     } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Failed to save profile.";
+
       setNotice({
         variant: "error",
         message:
-          e instanceof Error ? e.message : "Failed to save profile.",
+          message
+            .toLowerCase()
+            .includes("failed to update auth user: error updating user")
+            ? "Phone number already existed"
+            : message,
       });
     } finally {
       setSaving(false);

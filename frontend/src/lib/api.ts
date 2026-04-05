@@ -38,37 +38,12 @@ async function buildHeaders(
   return headers;
 }
 
-function detailToMessage(detail: unknown): string | null {
-  if (typeof detail === "string" && detail.trim()) {
-    return detail.trim();
-  }
-
-  if (Array.isArray(detail)) {
-    const parts = detail
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (
-          item &&
-          typeof item === "object" &&
-          "msg" in item &&
-          typeof (item as { msg: unknown }).msg === "string"
-        ) {
-          return (item as { msg: string }).msg;
-        }
-        return "";
-      })
-      .filter(Boolean);
-    if (parts.length > 0) return parts.join(" ");
-  }
-
-  return null;
-}
-
 async function getErrorMessage(response: Response) {
   try {
-    const data = (await response.json()) as { detail?: unknown };
-    const fromDetail = detailToMessage(data.detail);
-    if (fromDetail) return fromDetail;
+    const data = (await response.json()) as { detail?: string };
+    if (typeof data.detail === "string" && data.detail.length > 0) {
+      return data.detail;
+    }
   } catch {}
 
   return `Request failed with status ${response.status}`;

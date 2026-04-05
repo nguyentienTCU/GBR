@@ -5,11 +5,11 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 const baseClassName =
   "inline-flex h-13 shrink-0 cursor-pointer items-center justify-center rounded-xl px-6 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-70";
 
-/** Gold background, navy text — matches Create User / primary actions. */
+/** Gold background, navy text */
 const primaryClassName =
   "bg-[#C9A65B] text-[#071633] hover:brightness-95";
 
-/** Navy background, gold text — inverse of `primary`. */
+/** Navy background, gold text */
 const inverseClassName =
   "bg-[#071633] text-[#C9A65B] hover:brightness-110";
 

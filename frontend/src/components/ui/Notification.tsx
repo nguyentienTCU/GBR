@@ -11,15 +11,13 @@ export type NotificationProps = {
   open: boolean;
   onClose: () => void;
   variant: NotificationVariant;
-  /** Text from the API (`detail`) or a confirmation message for success */
   message: string;
-  /** Optional title; sensible defaults per variant */
   title?: string;
 };
 
 const defaultTitles: Record<NotificationVariant, string> = {
   success: "Success",
-  error: "Request failed",
+  error: "Error",
 };
 
 export function Notification({

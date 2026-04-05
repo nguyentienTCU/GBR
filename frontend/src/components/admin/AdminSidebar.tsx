@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { redirect, usePathname } from "next/navigation";
 import type { Session, User } from "@supabase/supabase-js";
-import { FileText, Home, LogOut, ShieldCheck } from "lucide-react";
+import {
+  FileText,
+  Home,
+  KeyRound,
+  LogOut,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 import { signOutUser, getCurrentSession, subscribeToAuthStateChange } from "@/lib/auth";
+import { ChangePasswordModal } from "@/components/common/ChangePasswordModal";
 import { ProfileModal } from "@/components/common/ProfileModal";
 
 type NavItem = {
@@ -42,7 +50,10 @@ export default function AdminSidebar() {
   const pathname = usePathname();
   const [shouldRedirectToLogin, setShouldRedirectToLogin] = useState(false);
   const [authUser, setAuthUser] = useState<User | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -66,6 +77,20 @@ export default function AdminSidebar() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      const el = accountMenuRef.current;
+      if (el && !el.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [accountMenuOpen]);
+
   if (shouldRedirectToLogin) {
     redirect("/login");
   }
@@ -88,6 +113,11 @@ export default function AdminSidebar() {
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-[#151d2e] bg-[#0a1120] text-white lg:w-64 lg:border-b-0 lg:border-r lg:border-[#151d2e]">
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
+      <ChangePasswordModal
+        open={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
+
 
       <div className="flex min-h-0 flex-1 flex-col lg:min-h-dvh">
         <div className="border-b border-[#151d2e] px-5 py-6">
@@ -144,23 +174,62 @@ export default function AdminSidebar() {
         </nav>
 
         <div className="mt-auto border-t border-[#151d2e] px-4 py-5">
-          <button
-            type="button"
-            onClick={() => setProfileOpen(true)}
-            className="mb-5 flex w-full items-center gap-3 rounded-xl px-1 py-2 text-left transition hover:bg-white/6 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A65B]/50"
-            aria-label="Open profile"
-          >
-            <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0d1528] text-sm font-semibold text-[#C9A65B] ring-1 ring-[#C9A65B]/30"
-              aria-hidden
+          <div ref={accountMenuRef} className="relative mb-5">
+            <button
+              type="button"
+              onClick={() => setAccountMenuOpen((open) => !open)}
+              className="flex w-full items-center gap-3 rounded-xl px-1 py-2 text-left transition hover:bg-white/6 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A65B]/50"
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Account menu"
             >
-              {initialFromUser(authUser)}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-white">{displayName}</p>
-              <p className="text-xs text-[#8ea0bd]">Admin</p>
-            </div>
-          </button>
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0d1528] text-sm font-semibold text-[#C9A65B] ring-1 ring-[#C9A65B]/30"
+                aria-hidden
+              >
+                {initialFromUser(authUser)}
+              </div>
+              <div className="min-w-0 flex-1 cursor-pointer">
+                <p className="truncate font-semibold text-white">{displayName}</p>
+                <p className="text-xs text-[#8ea0bd]">Admin</p>
+              </div>
+            </button>
+
+            {accountMenuOpen ? (
+              <div
+                role="menu"
+                className="absolute bottom-full left-0 right-0 z-40 mb-2 overflow-hidden rounded-xl border border-[#2a3548] bg-[#1a2332] py-1 shadow-lg"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-white transition hover:bg-white/10 cursor-pointer"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    setProfileOpen(true);
+                  }}
+                >
+                  <UserRound className="h-4 w-4 shrink-0 text-[#C9A65B]" strokeWidth={2} />
+                  Profile
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-white transition hover:bg-white/10 cursor-pointer"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    setChangePasswordOpen(true);
+                  }}
+                >
+                  <KeyRound
+                    className="h-4 w-4 shrink-0 text-[#C9A65B]"
+                    strokeWidth={2}
+                  />
+                  Change password
+                </button>
+              </div>
+            ) : null}
+          </div>
 
           <button
             type="button"
