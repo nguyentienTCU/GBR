@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Building2, Lock, Mail, Phone, User, UserPlus } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Notification } from "@/components/ui/Notification";
 import { createUser } from "@/service/users.service";
 import type { CreateUserPayload, UserRole } from "@/types/user";
 
@@ -22,6 +24,50 @@ const roleOptions: { label: string; value: UserRole }[] = [
   { label: "Buyer", value: "buyer" },
   { label: "Seller", value: "seller" },
 ];
+
+const createFieldLabels: Record<
+  keyof Pick<
+    CreateUserPayload,
+    | "first_name"
+    | "last_name"
+    | "email"
+    | "phone_number"
+    | "password"
+    | "company_name"
+  >,
+  string
+> = {
+  first_name: "First name",
+  last_name: "Last name",
+  email: "Email",
+  phone_number: "Phone number",
+  password: "Password",
+  company_name: "Company name",
+};
+
+function trimCreateUserPayload(data: CreateUserPayload): CreateUserPayload {
+  return {
+    ...data,
+    first_name: data.first_name.trim(),
+    last_name: data.last_name.trim(),
+    email: data.email.trim(),
+    phone_number: data.phone_number.trim(),
+    password: data.password.trim(),
+    company_name: data.company_name.trim(),
+  };
+}
+
+function validateCreateUserPayload(data: CreateUserPayload): string | null {
+  const missing: string[] = [];
+  (Object.keys(createFieldLabels) as (keyof typeof createFieldLabels)[]).forEach(
+    (key) => {
+      if (!data[key]) missing.push(createFieldLabels[key]);
+    },
+  );
+  if (!data.role) missing.push("Role");
+  if (missing.length === 0) return null;
+  return `Please fill in all fields.`;
+}
 
 type FormFieldProps = {
   id: keyof CreateUserPayload;
@@ -83,14 +129,24 @@ export default function CreateUserForm() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsSubmitting(true);
     setErrorMessage("");
     setSuccessMessage("");
 
+    const trimmed = trimCreateUserPayload(formData);
+    setFormData(trimmed);
+
+    const validationError = validateCreateUserPayload(trimmed);
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+
+    setIsSubmitting(true);
+
     try {
-      const response = await createUser(formData);
+      const response = await createUser(trimmed);
       setSuccessMessage(
-        `User created successfully. New user id: ${response.user_id}`,
+        `User created successfully.`,
       );
       setFormData(initialFormData);
     } catch (error) {
@@ -104,6 +160,23 @@ export default function CreateUserForm() {
 
   return (
     <div className="overflow-hidden rounded-[24px] bg-white shadow-[0_18px_40px_rgba(8,22,50,0.08)]">
+      {errorMessage ? (
+        <Notification
+          open
+          variant="error"
+          message={errorMessage}
+          onClose={() => setErrorMessage("")}
+        />
+      ) : null}
+      {successMessage ? (
+        <Notification
+          open
+          variant="success"
+          message={successMessage}
+          onClose={() => setSuccessMessage("")}
+        />
+      ) : null}
+
       <div className="relative overflow-hidden bg-[#071633] px-5 py-6 text-white sm:px-8 sm:py-8">
         <div className="absolute right-0 top-0 h-24 w-24 rounded-bl-full bg-white/10 sm:h-28 sm:w-28" />
 
@@ -209,26 +282,14 @@ export default function CreateUserForm() {
             icon={Building2}
           />
 
-          {errorMessage ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {errorMessage}
-            </div>
-          ) : null}
-
-          {successMessage ? (
-            <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-              {successMessage}
-            </div>
-          ) : null}
-
           <div className="flex justify-stretch sm:justify-end">
-            <button
+            <Button
               type="submit"
               disabled={isSubmitting}
-              className="inline-flex h-13 w-full items-center justify-center rounded-xl bg-[#C9A65B] px-6 text-sm font-semibold text-[#071633] transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto"
+              className="w-full sm:w-auto"
             >
               {isSubmitting ? "Creating user..." : "Create User"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

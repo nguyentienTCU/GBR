@@ -1,28 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { redirect, usePathname } from "next/navigation";
-import { signOutUser } from "@/lib/auth";
+import type { Session, User } from "@supabase/supabase-js";
+import {
+  FileText,
+  Home,
+  KeyRound,
+  LogOut,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
+import { signOutUser, getCurrentSession, subscribeToAuthStateChange } from "@/lib/auth";
+import { ChangePasswordModal } from "@/components/common/ChangePasswordModal";
+import { ProfileModal } from "@/components/common/ProfileModal";
 
-type StepItem = {
+type NavItem = {
   label: string;
   href: string;
-  step: number;
+  icon: typeof Home;
 };
 
-const stepItems: StepItem[] = [
-  { label: "Contract", href: "/user/contract", step: 1 },
-  { label: "Deposit Payment", href: "/user/deposit", step: 2 },
+const navItems: NavItem[] = [
+  { label: "Dashboard", href: "/dashboard", icon: Home },
+  { label: "Agreements", href: "/agreements", icon: FileText },
+  { label: "Deposit Fees", href: "/deposit-fees", icon: FileText },
 ];
 
-type UserSidebarProps = {
-  currentStep: number;
-};
+function displayNameFromUser(user: User | null): string {
+  if (!user) return "Unknown";
+  const meta = user.user_metadata as Record<string, unknown> | undefined;
+  const first =
+    typeof meta?.first_name === "string" ? meta.first_name.trim() : "";
+  const last =
+    typeof meta?.last_name === "string" ? meta.last_name.trim() : "";
+  const combined = [first, last].filter(Boolean).join(" ");
+  if (combined) return combined;
+  if (user.email) return user.email.split("@")[0] ?? "Unknown";
+  return "Unknown";
+}
 
-export default function UserSidebar({ currentStep }: UserSidebarProps) {
+function initialFromUser(user: User | null): string {
+  const name = displayNameFromUser(user);
+  const ch = name.trim().charAt(0);
+  return ch ? ch.toUpperCase() : "U";
+}
+
+export default function UserSidebar() {
   const pathname = usePathname();
   const [shouldRedirectToLogin, setShouldRedirectToLogin] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      const session = await getCurrentSession();
+      if (!mounted) return;
+      setAuthUser(session?.user ?? null);
+    }
+
+    void load();
+
+    const unsub = subscribeToAuthStateChange((next: Session | null) => {
+      if (!mounted) return;
+      setAuthUser(next?.user ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      const el = accountMenuRef.current;
+      if (el && !el.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [accountMenuOpen]);
 
   if (shouldRedirectToLogin) {
     redirect("/login");
@@ -37,118 +105,139 @@ export default function UserSidebar({ currentStep }: UserSidebarProps) {
     }
   }
 
-  function getStepStatus(step: number) {
-    if (step < currentStep) return "completed";
-    if (step === currentStep) return "active";
-    return "upcoming";
+  function isNavActive(href: string) {
+    return pathname === href || pathname.startsWith(`${href}/`);
   }
 
-  function isClickable(step: number) {
-    return step <= currentStep;
-  }
-
-  function getCircleClass(step: number) {
-    const status = getStepStatus(step);
-
-    if (status === "completed") {
-      return "border-green-600 bg-green-600 text-white";
-    }
-
-    if (status === "active") {
-      return "border-gray-900 bg-gray-900 text-white";
-    }
-
-    return "border-gray-300 bg-white text-gray-400";
-  }
-
-  function getTextClass(step: number) {
-    const status = getStepStatus(step);
-
-    if (status === "completed") {
-      return "text-gray-700";
-    }
-
-    if (status === "active") {
-      return "font-semibold text-gray-900";
-    }
-
-    return "text-gray-400";
-  }
+  const displayName = displayNameFromUser(authUser);
 
   return (
-    <aside className="w-full shrink-0 border-b border-gray-200 bg-white lg:sticky lg:top-16 lg:h-[calc(100vh-128px)] lg:w-72 lg:border-b-0 lg:border-r">
-      <div className="flex h-full flex-col">
-        <div className="border-b border-gray-200 px-6 py-5">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-            GBR
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">User Portal</p>
+    <aside className="flex w-full shrink-0 flex-col border-b border-[#151d2e] bg-[#0a1120] text-white lg:w-64 lg:border-b-0 lg:border-r lg:border-[#151d2e]">
+      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
+      <ChangePasswordModal
+        open={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col lg:min-h-dvh">
+        <div className="border-b border-[#151d2e] px-5 py-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0d1528] ring-1 ring-[#C9A65B]/35">
+              <ShieldCheck
+                className="h-6 w-6 text-[#C9A65B]"
+                strokeWidth={1.75}
+                aria-hidden
+              />
+            </div>
+            <div className="min-w-0 leading-tight">
+              <p className="text-lg font-bold tracking-tight text-white">
+                GodBless
+              </p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#C9A65B]">
+                RETIREMENT
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="border-b border-gray-200 px-6 py-5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-            Onboarding Progress
+        <nav className="flex-1 px-3 py-5 lg:py-6">
+          <p className="mb-4 px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8ea0bd]">
+            Navigation
           </p>
-          <p className="mt-2 text-sm text-gray-600">
-            Step {Math.min(currentStep, stepItems.length)} of {stepItems.length}
-          </p>
-        </div>
 
-        <nav className="flex-1 px-4 py-4 lg:py-6">
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-            {stepItems.map((item, index) => {
-              const active = pathname === item.href;
-              const clickable = isClickable(item.step);
-
-              const content = (
-                <div
-                  className={`flex items-start gap-3 rounded-xl px-3 py-3 transition ${
-                    active ? "bg-gray-100" : "hover:bg-gray-50"
-                  }`}
-                >
-                  <div
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${getCircleClass(
-                      item.step,
-                    )}`}
-                  >
-                    {item.step < currentStep ? "✓" : item.step}
-                  </div>
-
-                  <div className="flex-1">
-                    <p className={`text-sm ${getTextClass(item.step)}`}>
-                      {item.label}
-                    </p>
-
-                    {index !== stepItems.length - 1 && (
-                      <div className="ml-4 mt-3 h-6 w-px bg-gray-200" />
-                    )}
-                  </div>
-                </div>
-              );
-
-              if (clickable) {
-                return (
-                  <li key={item.href}>
-                    <Link href={item.href}>{content}</Link>
-                  </li>
-                );
-              }
+          <ul className="flex flex-col gap-1">
+            {navItems.map((item) => {
+              const active = isNavActive(item.href);
+              const Icon = item.icon;
 
               return (
                 <li key={item.href}>
-                  <div className="cursor-not-allowed opacity-80">{content}</div>
+                  <Link
+                    href={item.href}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
+                      active
+                        ? "bg-[#1a2332] text-[#C9A65B]"
+                        : "text-white hover:bg-white/6"
+                    }`}
+                  >
+                    <Icon
+                      className={`h-5 w-5 shrink-0 ${active ? "text-[#C9A65B]" : "text-white"}`}
+                      strokeWidth={1.75}
+                      aria-hidden
+                    />
+                    {item.label}
+                  </Link>
                 </li>
               );
             })}
           </ul>
         </nav>
 
-        <div className="border-t border-gray-200 p-4">
+        <div className="mt-auto border-t border-[#151d2e] px-4 py-5">
+          <div ref={accountMenuRef} className="relative mb-5">
+            <button
+              type="button"
+              onClick={() => setAccountMenuOpen((open) => !open)}
+              className="flex w-full items-center gap-3 rounded-xl px-1 py-2 text-left transition hover:bg-white/6 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A65B]/50"
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Account menu"
+            >
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0d1528] text-sm font-semibold text-[#C9A65B] ring-1 ring-[#C9A65B]/30"
+                aria-hidden
+              >
+                {initialFromUser(authUser)}
+              </div>
+              <div className="min-w-0 flex-1 cursor-pointer">
+                <p className="truncate font-semibold text-white">{displayName}</p>
+                <p className="text-xs text-[#8ea0bd]">User</p>
+              </div>
+            </button>
+
+            {accountMenuOpen ? (
+              <div
+                role="menu"
+                className="absolute bottom-full left-0 right-0 z-40 mb-2 overflow-hidden rounded-xl border border-[#2a3548] bg-[#1a2332] py-1 shadow-lg"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-white transition hover:bg-white/10 cursor-pointer"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    setProfileOpen(true);
+                  }}
+                >
+                  <UserRound className="h-4 w-4 shrink-0 text-[#C9A65B]" strokeWidth={2} />
+                  Profile
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm text-white transition hover:bg-white/10 cursor-pointer"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    setChangePasswordOpen(true);
+                  }}
+                >
+                  <KeyRound
+                    className="h-4 w-4 shrink-0 text-[#C9A65B]"
+                    strokeWidth={2}
+                  />
+                  Change password
+                </button>
+              </div>
+            ) : null}
+          </div>
+
           <button
+            type="button"
             onClick={handleLogout}
-            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-[#8ea0bd] transition hover:bg-white/6 hover:text-white"
           >
-            Log out
+            <LogOut className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
+            Sign Out
           </button>
         </div>
       </div>

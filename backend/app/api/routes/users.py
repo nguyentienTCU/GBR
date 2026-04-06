@@ -26,6 +26,8 @@ def update_me(
     return user_service.update_my_account(current_user["id"], payload)
 
 
+# -------------- Admin-only user management routes --------------
+
 @router.get("/", response_model=list[UserResponse])
 def get_users(
     admin_user: Annotated[AppUser, Depends(require_admin)],
@@ -34,8 +36,6 @@ def get_users(
     """Return all buyer and seller users for admin management views."""
     return user_service.get_buyer_seller_users()
 
-
-# -------------- Admin-only user management routes --------------
 
 @router.post("/")
 def create_user(
