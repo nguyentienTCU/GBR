@@ -5,7 +5,7 @@ from supabase import Client
 
 from app.api.deps.auth import (
     AuthUser,
-    get_access_token,
+    get_current_user,
     get_user_supabase,
     require_admin,
 )
@@ -17,39 +17,41 @@ from app.schemas.users import (
 )
 from app.services.users import UserService, get_users_service
 
-router = APIRouter(prefix="/users", tags=["admin"])
+router = APIRouter(prefix="/users", tags=["users"])
 
+
+# =========================
+# user routes
+# =========================
 
 @router.get("/me", response_model=UserResponse)
 def get_me(
-    token: Annotated[str, Depends(get_access_token)],
+    auth_user: Annotated[AuthUser, Depends(get_current_user)],
     supabase: Annotated[Client, Depends(get_user_supabase)],
     user_service: Annotated[UserService, Depends(get_users_service)],
 ) -> UserResponse:
-    """Return the currently authenticated user's profile."""
-    return user_service.get_my_account(supabase, token)
+    return user_service.get_my_account(supabase, auth_user.id)
 
 
 @router.patch("/me", response_model=UserResponse)
 def update_me(
     payload: Annotated[UpdateUserRequest, Body(...)],
-    token: Annotated[str, Depends(get_access_token)],
+    auth_user: Annotated[AuthUser, Depends(get_current_user)],
     supabase: Annotated[Client, Depends(get_user_supabase)],
     user_service: Annotated[UserService, Depends(get_users_service)],
 ) -> UserResponse:
-    """Update the current user's own profile."""
-    return user_service.update_my_account(supabase, token, payload)
+    return user_service.update_my_account(supabase, auth_user, payload)
 
 
-# -------------- Admin-only user management routes --------------
-
+# =========================
+# admin routes
+# =========================
 
 @router.get("/", response_model=list[UserResponse])
 def get_users(
     _admin_user: Annotated[AuthUser, Depends(require_admin)],
     user_service: Annotated[UserService, Depends(get_users_service)],
-) -> list[UserResponse]:
-    """Return all buyer and seller users for admin management views."""
+):
     return user_service.get_buyer_seller_users()
 
 
@@ -59,7 +61,6 @@ def create_user(
     admin_user: Annotated[AuthUser, Depends(require_admin)],
     user_service: Annotated[UserService, Depends(get_users_service)],
 ):
-    """Create a new user account through the admin workflow."""
     response = user_service.create_user_by_admin(payload)
 
     if not response.user:
@@ -80,8 +81,7 @@ def get_user_by_id(
     user_id: str,
     _admin_user: Annotated[AuthUser, Depends(require_admin)],
     user_service: Annotated[UserService, Depends(get_users_service)],
-) -> UserResponse:
-    """Return a buyer or seller profile by its application user id."""
+):
     return user_service.get_buyer_seller_user_by_id(user_id)
 
 
@@ -91,8 +91,7 @@ def update_user(
     payload: Annotated[UpdateUserRequest, Body(...)],
     _admin_user: Annotated[AuthUser, Depends(require_admin)],
     user_service: Annotated[UserService, Depends(get_users_service)],
-) -> UserResponse:
-    """Update a buyer or seller profile through the admin workflow."""
+):
     return user_service.update_user_by_admin(user_id, payload)
 
 
@@ -101,6 +100,5 @@ def send_verification_email(
     user_id: str,
     _admin_user: Annotated[AuthUser, Depends(require_admin)],
     user_service: Annotated[UserService, Depends(get_users_service)],
-) -> SendVerificationEmailResponse:
-    """Resend the verification email for a buyer or seller user."""
+):
     return user_service.resend_verification_email_by_admin(user_id)

@@ -87,15 +87,10 @@ def require_admin(
 
 
 # =========================
-#   supabase clients
+#   get supabase clients
 # =========================
 def get_user_supabase(
     token: Annotated[str, Depends(get_access_token)],
 ) -> Client:
     """Supabase client acting as the logged-in user"""
     return get_user_supabase_client(token)
-
-
-def get_admin_supabase() -> Client:
-    """Supabase client with admin/service-role privileges."""
-    return get_service_supabase_client()

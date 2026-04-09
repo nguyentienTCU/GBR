@@ -2,12 +2,24 @@ import smtplib
 from email.message import EmailMessage
 
 from app.core.config import get_settings  # adjust import path if needed
+from app.core.supabase_client import get_service_supabase_client
 
 
 class EmailSendError(Exception):
     """
     Raised when sending an email fails.
     """
+
+
+class ConfirmationEmailError(Exception):
+    """
+    Raised when confirmation link generation or email delivery fails.
+    """
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
 
 
 def send_email(to_email: str, subject: str, body: str) -> None:
@@ -66,3 +78,39 @@ GBR Onboarding Team
         subject=subject,
         body=body,
     )
+
+
+def send_confirmation_email(
+    *,
+    email: str,
+    first_name: str,
+    last_name: str,
+    role: str,
+) -> None:
+    supabase = get_service_supabase_client()
+
+    try:
+        response = supabase.auth.admin.generate_link(
+            {"type": "invite", "email": email}
+        )
+    except Exception as e:
+        raise ConfirmationEmailError(
+            status_code=400,
+            detail=f"Failed to generate confirmation link: {str(e)}",
+        ) from e
+
+    action_link = response.properties.action_link
+
+    try:
+        send_account_created_email(
+            to_email=email,
+            first_name=first_name,
+            last_name=last_name,
+            role=role,
+            confirmation_link=action_link,
+        )
+    except EmailSendError as e:
+        raise ConfirmationEmailError(
+            status_code=500,
+            detail=f"Failed to send confirmation email: {str(e)}",
+        ) from e

@@ -9,74 +9,22 @@ class UserRepository:
     Repository layer for user-related Supabase operations.
 
     Responsibilities:
-    - Execute Supabase auth/database queries
-    - Keep data-access logic out of the service layer
+    - Execute Supabase database queries
+    - Execute admin auth operations (service role)
     """
-
-    # =========================
-    # auth queries
-    # =========================
-
-    def get_current_auth_user(self, supabase: Client, access_token: str) -> Any:
-        """
-        Get the currently authenticated auth user from the provided JWT.
-        """
-        try:
-            response = supabase.auth.get_user(access_token)
-            user = response.user
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Failed to fetch authenticated user: {str(exc)}",
-            ) from exc
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authenticated user not found",
-            )
-
-        return user
-
-    def get_auth_user_by_id_admin(
-        self,
-        supabase: Client,
-        user_id: str,
-    ) -> Any:
-        """
-        Admin: fetch any auth user by id.
-        """
-        try:
-            response = supabase.auth.admin.get_user_by_id(user_id)
-            user = response.user
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to fetch auth user: {str(exc)}",
-            ) from exc
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Auth user not found",
-            )
-
-        return user
 
     # =========================
     # profile queries
     # =========================
 
-    def get_my_user_profile(self, supabase: Client, access_token: str) -> dict[str, Any]:
+    def get_my_user_profile(self, supabase: Client, user_id: str) -> dict[str, Any]:
         """
-        Fetch the current user's profile row from public.user using RLS.
+        Fetch the current user's profile row using RLS.
         """
-        auth_user = self.get_current_auth_user(supabase, access_token)
-
         result = (
             supabase.table("user")
             .select("*")
-            .eq("id", auth_user.id)
+            .eq("id", user_id)
             .single()
             .execute()
         )
@@ -130,8 +78,33 @@ class UserRepository:
         return result.data or []
 
     # =========================
-    # auth updates
+    # auth (admin only)
     # =========================
+
+    def get_auth_user_by_id_admin(
+        self,
+        supabase: Client,
+        user_id: str,
+    ) -> Any:
+        """
+        Admin: fetch any auth user by id.
+        """
+        try:
+            response = supabase.auth.admin.get_user_by_id(user_id)
+            user = response.user
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to fetch auth user: {str(exc)}",
+            ) from exc
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Auth user not found",
+            )
+
+        return user
 
     def update_auth_user_by_id_admin(
         self,
