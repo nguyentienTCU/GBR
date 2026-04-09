@@ -7,7 +7,7 @@ from supabase import Client
 
 from app.core.supabase_client import get_service_supabase_client
 from app.lib.email import ConfirmationEmailError, send_confirmation_email
-from app.repository.users import UserRepository
+from app.api.repository.users import UserRepository
 from app.schemas.users import (
     CreateUserRequest,
     UpdateUserRequest,
@@ -24,7 +24,7 @@ class EmailPayload(BaseModel):
 
 class UserService:
     def __init__(self) -> None:
-        self._get_supabase_client = get_service_supabase_client
+        self.supabase_admin = get_service_supabase_client()
         self.repo = UserRepository()
 
     # =========================
@@ -90,9 +90,8 @@ class UserService:
         try:
             if auth_update_payload:
                 # Use the service-role client for auth admin updates; the user-scoped client cannot do this.
-                admin_supabase = self._get_supabase_client()
                 self.repo.update_auth_user_by_id_admin(
-                    admin_supabase,
+                    self.supabase_admin,
                     auth_user.id,
                     auth_update_payload,
                 )
@@ -104,19 +103,22 @@ class UserService:
 
         return self.repo.get_my_user_profile(supabase, auth_user.id)
 
+    def get_current_user_step(self, supabase: Client, user_id: str) -> int | None:
+        """Return the authenticated user's current onboarding step."""
+        user = self.repo.get_my_user_profile(supabase, user_id)
+        return user.get("current_step")
+
     # =========================
     # admin flow
     # =========================
 
     def get_buyer_seller_users(self) -> list[dict[str, Any]]:
         """List admin-manageable buyer and seller users."""
-        supabase = self._get_supabase_client()
-        return self.repo.list_buyer_seller_users(supabase)
+        return self.repo.list_buyer_seller_users(self.supabase_admin)
 
     def get_buyer_seller_user_by_id(self, user_id: str) -> dict[str, Any]:
         """Return one buyer or seller profile and reject non-managed roles."""
-        supabase = self._get_supabase_client()
-        user = self.repo.get_user_profile_by_id(supabase, user_id)
+        user = self.repo.get_user_profile_by_id(self.supabase_admin, user_id)
 
         # Admin management endpoints are intentionally limited to buyer/seller accounts.
         if user["role"] not in {"buyer", "seller"}:
@@ -133,15 +135,13 @@ class UserService:
         payload: UpdateUserRequest,
     ) -> dict[str, Any]:
         """Apply admin-driven updates to another user's auth metadata."""
-        supabase = self._get_supabase_client()
-
-        existing_profile = self.repo.get_user_profile_by_id(supabase, user_id)
+        existing_profile = self.repo.get_user_profile_by_id(self.supabase_admin, user_id)
         update_data = payload.model_dump(exclude_unset=True)
 
         if not update_data:
             return existing_profile
 
-        auth_user = self.repo.get_auth_user_by_id_admin(supabase, user_id)
+        auth_user = self.repo.get_auth_user_by_id_admin(self.supabase_admin, user_id)
         existing_metadata = auth_user.user_metadata or {}
         new_metadata = self._build_metadata_update(existing_metadata, update_data)
 
@@ -157,7 +157,7 @@ class UserService:
         try:
             if auth_update_payload:
                 self.repo.update_auth_user_by_id_admin(
-                    supabase,
+                    self.supabase_admin,
                     user_id,
                     auth_update_payload,
                 )
@@ -167,7 +167,7 @@ class UserService:
                 detail=f"Failed to update auth user: {str(exc)}",
             ) from exc
 
-        return self.repo.get_user_profile_by_id(supabase, user_id)
+        return self.repo.get_user_profile_by_id(self.supabase_admin, user_id)
 
     # =========================
     # create + email
@@ -175,12 +175,11 @@ class UserService:
 
     def create_user_by_admin(self, payload: CreateUserRequest) -> Any:
         """Create a new auth user and immediately send the confirmation email."""
-        supabase = self._get_supabase_client()
         # The onboarding UI uses current_step to decide which step to show first.
         current_step = get_current_step_for_role(payload.role)
 
         try:
-            response = supabase.auth.admin.create_user(
+            response = self.supabase_admin.auth.admin.create_user(
                 {
                     "email": payload.email,
                     "password": payload.password,
@@ -231,10 +230,8 @@ class UserService:
             self,
             user_id: str,
     ) -> dict[str, str]:
-        supabase = self._get_supabase_client()
-
         profile = self.get_buyer_seller_user_by_id(user_id)
-        auth_user = self.repo.get_auth_user_by_id_admin(supabase, user_id)
+        auth_user = self.repo.get_auth_user_by_id_admin(self.supabase_admin, user_id)
 
         metadata = auth_user.user_metadata or {}
         email = getattr(auth_user, "email", None)
@@ -259,6 +256,7 @@ class UserService:
             "user_id": user_id,
             "email": email,
         }
+
 
 
 @lru_cache

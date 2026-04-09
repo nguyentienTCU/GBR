@@ -14,8 +14,9 @@ from app.schemas.users import (
     SendVerificationEmailResponse,
     UpdateUserRequest,
     UserResponse,
+    CurrentStepResponse
 )
-from app.services.users import UserService, get_users_service
+from app.api.services.users import UserService, get_users_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -32,7 +33,6 @@ def get_me(
 ) -> UserResponse:
     return user_service.get_my_account(supabase, auth_user.id)
 
-
 @router.patch("/me", response_model=UserResponse)
 def update_me(
     payload: Annotated[UpdateUserRequest, Body(...)],
@@ -43,9 +43,20 @@ def update_me(
     return user_service.update_my_account(supabase, auth_user, payload)
 
 
-# =========================
-# admin routes
-# =========================
+@router.get("/current-step", response_model=CurrentStepResponse)
+def get_current_step(
+    auth_user: Annotated[AuthUser, Depends(get_current_user)],
+    supabase: Annotated[Client, Depends(get_user_supabase)],
+    user_service: Annotated[UserService, Depends(get_users_service)],
+) -> CurrentStepResponse:
+    """Return the current onboarding step for the authenticated user."""
+    current_step = user_service.get_current_user_step(supabase, auth_user.id)
+    return CurrentStepResponse(
+        step=current_step,
+    )
+
+
+# -------------- Admin-only user management routes --------------
 
 @router.get("/", response_model=list[UserResponse])
 def get_users(

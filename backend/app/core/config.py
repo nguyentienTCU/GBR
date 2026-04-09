@@ -13,13 +13,15 @@ class Settings(BaseSettings):
     supabase_service_role_key: str
 
     # DocuSign
-    # docusign_integration_key: str
-    # docusign_user_id: str
-    # docusign_account_id: str
-    # docusign_base_path: str = "https://demo.docusign.net/restapi"
-    # docusign_auth_server: str = "account-d.docusign.com"
-    # docusign_private_key_path: str
-    # docusign_redirect_uri: str
+    docusign_integration_key: str
+    docusign_user_id: str
+    docusign_account_id: str
+    docusign_base_path: str = "https://demo.docusign.net/restapi"
+    docusign_auth_server: str = "account-d.docusign.com"
+    docusign_private_key_path: str
+    docusign_redirect_uri: str
+    docusign_buyer_template_id: str
+    docusign_seller_template_id: str
 
     # Email
     smtp_host: str

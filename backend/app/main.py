@@ -17,7 +17,7 @@ app = FastAPI(
 # -------------------------
 origins = [
     "http://localhost:3000",  # React / Next.js (decide later)
-    "http://127.0.0.1:3000",
+    "http://localhost:3000/*", # allow all subpaths
 ]
 
 app.add_middleware(

@@ -10,6 +10,14 @@ export function getCurrentUserProfile() {
   return apiRequest<User>("/users/me");
 }
 
+export async function getCurrentUserStep() {
+  const response = await apiRequest<{ step: number}>(
+    "/users/current-step",
+  );
+
+  return response.step;
+}
+
 export function updateCurrentUserProfile(payload: UpdateUserPayload) {
   return apiRequest<User>("/users/me", {
     method: "PATCH",

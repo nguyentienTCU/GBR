@@ -94,3 +94,8 @@ def get_user_supabase(
 ) -> Client:
     """Supabase client acting as the logged-in user"""
     return get_user_supabase_client(token)
+
+
+def get_service_supabase() -> Client:
+    """Service-role Supabase client for server-side operations."""
+    return get_service_supabase_client()

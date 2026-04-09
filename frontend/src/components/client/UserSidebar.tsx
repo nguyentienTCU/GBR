@@ -15,6 +15,8 @@ import {
 import { signOutUser, getCurrentSession, subscribeToAuthStateChange } from "@/lib/auth";
 import { ChangePasswordModal } from "@/components/common/ChangePasswordModal";
 import { ProfileModal } from "@/components/common/ProfileModal";
+import { useUserStep } from "@/contexts/UserStepContext";
+import { isRouteCompletedForStep, isRouteUnlockedForStep } from "@/lib/user-step";
 
 type NavItem = {
   label: string;
@@ -24,8 +26,8 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: Home },
-  { label: "Agreements", href: "/agreements", icon: FileText },
-  { label: "Deposit Fees", href: "/deposit-fees", icon: FileText },
+  { label: "Agreement", href: "/agreement", icon: FileText },
+  { label: "Deposit Fee", href: "/deposit-fees", icon: FileText },
 ];
 
 function displayNameFromUser(user: User | null): string {
@@ -55,6 +57,7 @@ export default function UserSidebar() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
+  const { currentStep, isLoading: isStepLoading } = useUserStep();
 
   useEffect(() => {
     let mounted = true;
@@ -149,24 +152,63 @@ export default function UserSidebar() {
             {navItems.map((item) => {
               const active = isNavActive(item.href);
               const Icon = item.icon;
+              const isUnlocked =
+                item.href === "/dashboard"
+                  ? true
+                  : isRouteUnlockedForStep(item.href, currentStep);
+              const isCompleted =
+                item.href === "/dashboard"
+                  ? false
+                  : isRouteCompletedForStep(item.href, currentStep);
+              const isDisabled = !isStepLoading && !isUnlocked;
+              const isTemporarilyDisabled =
+                item.href !== "/dashboard" && (isStepLoading || isDisabled);
+              const itemClassName = `flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
+                active
+                  ? "bg-[#1a2332] text-[#C9A65B]"
+                  : isTemporarilyDisabled
+                    ? "cursor-not-allowed text-[#6d7f99]"
+                    : "text-white hover:bg-white/6"
+              }`;
 
               return (
                 <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
-                      active
-                        ? "bg-[#1a2332] text-[#C9A65B]"
-                        : "text-white hover:bg-white/6"
-                    }`}
-                  >
-                    <Icon
-                      className={`h-5 w-5 shrink-0 ${active ? "text-[#C9A65B]" : "text-white"}`}
-                      strokeWidth={1.75}
-                      aria-hidden
-                    />
-                    {item.label}
-                  </Link>
+                  {isTemporarilyDisabled ? (
+                    <div
+                      aria-disabled="true"
+                      className={itemClassName}
+                    >
+                      <Icon
+                        className="h-5 w-5 shrink-0 text-[#6d7f99]"
+                        strokeWidth={1.75}
+                        aria-hidden
+                      />
+                      <span className="flex-1">{item.label}</span>
+                      <span className="rounded-full bg-white/6 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#93a3bb]">
+                        {isStepLoading ? "Loading" : "Locked"}
+                      </span>
+                    </div>
+                  ) : (
+                    <Link href={item.href} className={itemClassName}>
+                      <Icon
+                        className={`h-5 w-5 shrink-0 ${
+                          active
+                            ? "text-[#C9A65B]"
+                            : isCompleted
+                              ? "text-[#C9A65B]"
+                              : "text-white"
+                        }`}
+                        strokeWidth={1.75}
+                        aria-hidden
+                      />
+                      <span className="flex-1">{item.label}</span>
+                      {isCompleted ? (
+                        <span className="rounded-full bg-[#C9A65B]/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#E6C57F]">
+                          Done
+                        </span>
+                      ) : null}
+                    </Link>
+                  )}
                 </li>
               );
             })}

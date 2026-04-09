@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr
+from pydantic import AliasChoices, BaseModel, EmailStr, Field
 
 Role = Literal["admin", "mod", "buyer", "seller"]
 
@@ -31,6 +31,12 @@ class UpdateUserRequest(BaseModel):
     company_name: str | None = None
 
 
+class CurrentStepResponse(BaseModel):
+    """Minimal response used by the frontend to gate onboarding routes."""
+    step: int | None
+
+
+
 class UserResponse(BaseModel):
     """User profile returned by read and update endpoints."""
     id: str
@@ -39,7 +45,10 @@ class UserResponse(BaseModel):
     email: EmailStr
     phone_number: str | None = None
     role: Role
-    current_step: int | None
+    current_step: int | None = Field(
+        validation_alias=AliasChoices("current_step", "current-step"),
+        serialization_alias="current_step",
+    )
     company_name: str | None = None
     email_verified: bool
 
