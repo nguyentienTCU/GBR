@@ -42,7 +42,6 @@ class CreateRecipientViewResult:
 
 
 class CreateSigningSessionRequest(BaseModel):
-    user_id: str | None = None
     return_url: str
 
 

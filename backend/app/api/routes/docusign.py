@@ -61,15 +61,10 @@ def create_recipient_view(
     supabase: Annotated[Client, Depends(get_user_supabase)],
     docusign_service: Annotated[DocusignService, Depends(get_docusign_service)],
 ) -> CreateSigningSessionResponse:
-    target_user_id = payload.user_id or current_user.id
-
-    if target_user_id != current_user.id:
-        require_admin(current_user)
-
     try:
         return docusign_service.create_signing_session(
             supabase=supabase,
-            user_id=target_user_id,
+            user_id=current_user.id,
             return_url=payload.return_url,
         )
     except DocusignConsentRequiredError as e:
