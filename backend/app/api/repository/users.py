@@ -1,9 +1,8 @@
 from typing import Any
 
 from fastapi import HTTPException, status
-from supabase import Client
 
-from app.schemas.users import UpdateUserRequest
+from app.core.supabase_client import get_service_supabase_client
 
 
 class UserRepository:
@@ -15,17 +14,20 @@ class UserRepository:
     - Execute admin auth operations (service role)
     """
 
+    def __init__(self) -> None:
+        self.supabase = get_service_supabase_client()
+
     # =========================
     # profile queries
     # =========================
 
-    def get_my_user_profile(self, supabase: Client, user_id: str) -> dict[str, Any]:
+    def get_my_user_profile(self, user_id: str) -> dict[str, Any]:
         """
-        Fetch the current user's profile row using RLS.
+        Fetch the current user's profile row.
         """
 
         result = (
-            supabase.table("user")
+            self.supabase.table("user")
             .select("*")
             .eq("id", user_id)
             .single()
@@ -42,14 +44,13 @@ class UserRepository:
 
     def get_user_profile_by_id(
         self,
-        supabase: Client,
         user_id: str,
     ) -> dict[str, Any]:
         """
         Admin: fetch any user profile row by id.
         """
         result = (
-            supabase.table("user")
+            self.supabase.table("user")
             .select("*")
             .eq("id", user_id)
             .single()
@@ -66,13 +67,12 @@ class UserRepository:
 
     def list_buyer_seller_users(
         self,
-        supabase: Client,
     ) -> list[dict[str, Any]]:
         """
         Admin: list all buyer and seller users.
         """
         result = (
-            supabase.table("user")
+            self.supabase.table("user")
             .select("*")
             .in_("role", ["buyer", "seller"])
             .execute()
@@ -82,14 +82,13 @@ class UserRepository:
 
     def update_user_step(
         self,
-        supabase: Client,
         user_id: str,
         step: int,
     ) -> dict[str, Any]:
         """Update only the onboarding step stored in the application user table."""
         try:
             result = (
-                supabase.table("user")
+                self.supabase.table("user")
                 .update({"current_step": step})
                 .eq("id", user_id)
                 .execute()
@@ -114,14 +113,13 @@ class UserRepository:
 
     def get_auth_user_by_id_admin(
         self,
-        supabase: Client,
         user_id: str,
     ) -> Any:
         """
         Admin: fetch any auth user by id.
         """
         try:
-            response = supabase.auth.admin.get_user_by_id(user_id)
+            response = self.supabase.auth.admin.get_user_by_id(user_id)
             user = response.user
         except Exception as exc:
             raise HTTPException(
@@ -139,11 +137,14 @@ class UserRepository:
 
     def update_auth_user_by_id_admin(
         self,
-        supabase: Client,
         user_id: str,
         auth_update_payload: dict[str, Any],
     ) -> None:
         """
         Admin: update another user's auth account.
         """
-        supabase.auth.admin.update_user_by_id(user_id, auth_update_payload)
+        self.supabase.auth.admin.update_user_by_id(user_id, auth_update_payload)
+
+    def create_auth_user_admin(self, payload: dict[str, Any]) -> Any:
+        """Admin: create an auth user with the provided payload."""
+        return self.supabase.auth.admin.create_user(payload)

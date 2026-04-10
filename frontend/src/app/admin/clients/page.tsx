@@ -6,6 +6,7 @@ import ClientTableRow from "@/components/admin/ClientTableRow";
 import { Button } from "@/components/ui/button";
 import { getUsers, resendVerificationEmail } from "@/service/users.service";
 import type { User } from "@/types/user";
+import AppLoadingScreen from "@/components/common/AppLoadingScreen";
 
 function getFullName(user: User) {
   const fullName = `${user.first_name} ${user.last_name}`.trim();
@@ -53,8 +54,8 @@ export default function AdminClientsPage() {
   // summary counts
   // =========================
 
-  const unverifiedCount = useMemo(() => {
-    return clients.filter((u) => !u.email_verified).length;
+  const verifiedCount = useMemo(() => {
+    return clients.filter((u) => u.email_verified).length;
   }, [clients]);
 
   const agreementCount = useMemo(() => {
@@ -131,47 +132,54 @@ export default function AdminClientsPage() {
 
         {/* SUMMARY CARDS */}
         <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">All Clients</p>
+          {/* All Clients */}
+          <div className="rounded-2xl border border-[#E5C07B] bg-white p-5 shadow-sm">
+            <p className="text-sm font-medium text-[#B8962E]">All Clients</p>
             <p className="mt-2 text-3xl font-semibold text-slate-900">
               {clients.length}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-amber-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-amber-700">Unverified</p>
+          {/* Verified */}
+          <div className="rounded-2xl border border-orange-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-medium text-orange-700">Verified</p>
             <p className="mt-2 text-3xl font-semibold text-slate-900">
-              {unverifiedCount}
+              {verifiedCount}
             </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Needs email confirmation
+            <p className="mt-1 text-sm font-medium text-orange-700">
+              Email confirmed
             </p>
           </div>
 
+          {/* Step 1 */}
           <div className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm">
-            <p className="mt-1 text-xs text-blue-700">Step 1</p>
-
+            <p className="text-sm font-medium text-blue-700">Step 1</p>
             <p className="mt-2 text-3xl font-semibold text-slate-900">
               {agreementCount}
             </p>
-            <p className="text-sm font-medium text-slate-500">Agreement</p>
+            <p className="mt-1 text-sm font-medium text-blue-700">Agreement</p>
           </div>
 
+          {/* Step 2 */}
           <div className="rounded-2xl border border-purple-200 bg-white p-5 shadow-sm">
-            <p className="mt-1 text-xs text-purple-700">Step 2</p>
-
+            <p className="text-sm font-medium text-purple-700">Step 2</p>
             <p className="mt-2 text-3xl font-semibold text-slate-900">
               {depositCount}
             </p>
-            <p className="text-sm font-medium text-slate-500">Deposit Fee</p>
+            <p className="mt-1 text-sm font-medium text-purple-700">
+              Deposit Fee
+            </p>
           </div>
 
+          {/* Completed */}
           <div className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm">
             <p className="text-sm font-medium text-emerald-700">Completed</p>
             <p className="mt-2 text-3xl font-semibold text-slate-900">
               {completedCount}
             </p>
-            <p className="mt-1 text-xs text-slate-500">Fully onboarded</p>
+            <p className="mt-1 text-sm font-medium text-emerald-700">
+              Fully onboarded
+            </p>
           </div>
         </section>
 
@@ -184,9 +192,11 @@ export default function AdminClientsPage() {
           </div>
 
           {isLoading ? (
-            <div className="px-6 py-10 text-sm text-slate-500">
-              Loading clients...
-            </div>
+            <AppLoadingScreen
+              title="Loading clients"
+              description="Fetching all client accounts and onboarding progress."
+              variant="admin"
+            />
           ) : error ? (
             <div className="px-6 py-10 text-sm text-red-600">{error}</div>
           ) : clients.length === 0 ? (

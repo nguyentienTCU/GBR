@@ -8,6 +8,7 @@ import UpdateUserProfileModal from "@/components/admin/UserProfileModal";
 import { Button } from "@/components/ui/button";
 import { getUserById, resendVerificationEmail } from "@/service/users.service";
 import type { User } from "@/types/user";
+import AppLoadingScreen from "@/components/common/AppLoadingScreen";
 
 function formatRole(role: User["role"]) {
   return role.charAt(0).toUpperCase() + role.slice(1);
@@ -153,10 +154,12 @@ export default function AdminClientDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 lg:p-10">
-        <div className="rounded-3xl border border-gray-200 bg-white p-8 shadow-sm">
-          <p className="text-sm text-gray-500">Loading user details...</p>
-        </div>
+      <div className="flex min-h-[calc(100vh-120px)] items-center justify-center p-6 lg:p-10">
+        <AppLoadingScreen
+          title="Loading user details"
+          description="Fetching the selected client profile and account information."
+          variant="admin"
+        />
       </div>
     );
   }

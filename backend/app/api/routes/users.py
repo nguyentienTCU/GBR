@@ -1,12 +1,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
-from supabase import Client
 
 from app.api.deps.auth import (
     AuthUser,
     get_current_user,
-    get_user_supabase,
     require_admin,
 )
 from app.schemas.users import (
@@ -28,29 +26,26 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/me", response_model=UserResponse)
 def get_me(
     auth_user: Annotated[AuthUser, Depends(get_current_user)],
-    supabase: Annotated[Client, Depends(get_user_supabase)],
     user_service: Annotated[UserService, Depends(get_users_service)],
 ) -> UserResponse:
-    return user_service.get_my_account(supabase, auth_user.id)
+    return user_service.get_my_account(auth_user.id)
 
 @router.patch("/me", response_model=UserResponse)
 def update_me(
     payload: Annotated[UpdateUserRequest, Body(...)],
     auth_user: Annotated[AuthUser, Depends(get_current_user)],
-    supabase: Annotated[Client, Depends(get_user_supabase)],
     user_service: Annotated[UserService, Depends(get_users_service)],
 ) -> UserResponse:
-    return user_service.update_my_account(supabase, auth_user, payload)
+    return user_service.update_my_account(auth_user, payload)
 
 
 @router.get("/current-step", response_model=CurrentStepResponse)
 def get_current_step(
     auth_user: Annotated[AuthUser, Depends(get_current_user)],
-    supabase: Annotated[Client, Depends(get_user_supabase)],
     user_service: Annotated[UserService, Depends(get_users_service)],
 ) -> CurrentStepResponse:
     """Return the current onboarding step for the authenticated user."""
-    current_step = user_service.get_current_user_step(supabase, auth_user.id)
+    current_step = user_service.get_current_user_step(auth_user.id)
     return CurrentStepResponse(
         step=current_step,
     )

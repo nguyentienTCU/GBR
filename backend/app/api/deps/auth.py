@@ -1,13 +1,8 @@
 from typing import Annotated, Any, TypeAlias
 
 from fastapi import Depends, Header, HTTPException, status
-from supabase import Client
 
-from app.core.supabase_client import (
-    get_supabase_client,
-    get_service_supabase_client,
-    get_user_supabase_client,
-)
+from app.core.supabase_client import get_service_supabase_client
 
 AuthUser: TypeAlias = Any
 AuthorizationHeader = Annotated[str | None, Header()]
@@ -48,7 +43,7 @@ def get_current_user(
     token: Annotated[str, Depends(get_access_token)],
 ) -> AuthUser:
     """Validate token with Supabase and return auth user."""
-    supabase = get_supabase_client()
+    supabase = get_service_supabase_client()
 
     try:
         response = supabase.auth.get_user(token)
@@ -85,17 +80,3 @@ def require_admin(
 
     return auth_user
 
-
-# =========================
-#   get supabase clients
-# =========================
-def get_user_supabase(
-    token: Annotated[str, Depends(get_access_token)],
-) -> Client:
-    """Supabase client acting as the logged-in user"""
-    return get_user_supabase_client(token)
-
-
-def get_service_supabase() -> Client:
-    """Service-role Supabase client for server-side operations."""
-    return get_service_supabase_client()

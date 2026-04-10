@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # frontend url
     frontend_login_url: str
+    frontend_url: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

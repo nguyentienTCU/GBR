@@ -17,7 +17,6 @@ export type CreateUserPayload = {
   last_name: string;
   email: string;
   phone_number: string;
-  password: string;
   role: UserRole;
   company_name: string;
 };

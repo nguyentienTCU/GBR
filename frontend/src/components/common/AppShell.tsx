@@ -14,6 +14,7 @@ import {
   refreshCurrentSession,
   subscribeToAuthStateChange,
 } from "@/lib/auth";
+import AppLoadingScreen from "./AppLoadingScreen";
 
 type AppShellProps = {
   children: ReactNode;
@@ -25,16 +26,7 @@ const PUBLIC_ROUTES = new Set([
   "/auth/reset-password",
 ]);
 
-const AUTH_ONLY_PUBLIC_ROUTES = new Set([
-  "/login",
-  "/forgot-password",
-  "/auth/reset-password",
-]);
-
-const ADMIN_ALLOWED_ROUTES = new Set([
-  "/admin/create",
-  "/admin/clients",
-]);
+const ADMIN_ALLOWED_ROUTES = new Set(["/admin/create", "/admin/clients"]);
 
 const USER_ALLOWED_ROUTES = new Set([
   "/dashboard",
@@ -45,7 +37,7 @@ const USER_ALLOWED_ROUTES = new Set([
 function isAllowedRoute(
   pathname: string,
   allowedRoutes: Set<string>,
-  role: string | null
+  role: string | null,
 ) {
   if (allowedRoutes.has(pathname)) {
     return true;
@@ -80,23 +72,6 @@ function UserStepGuard({ pathname }: { pathname: string }) {
   return null;
 }
 
-function UserLoadingScreen() {
-  return (
-    <div className="flex min-h-dvh flex-1 items-center justify-center bg-[radial-gradient(circle_at_top_right,_rgba(201,166,91,0.08),_transparent_22%),linear-gradient(180deg,_#F8FAFD_0%,_#F4F7FB_100%)] px-6">
-      <div className="w-full max-w-md rounded-[28px] border border-[#E4EAF3] bg-white px-8 py-10 text-center shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
-        <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[#E9EEF6] border-t-[#C9A65B]" />
-        <h2 className="mt-5 text-2xl font-semibold tracking-[-0.03em] text-[#14213D]">
-          Loading your progress
-        </h2>
-        <p className="mt-3 text-sm leading-6 text-[#667892]">
-          We&apos;re checking your current onboarding step so this page opens in the
-          correct state.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function UserAppFrame({
   pathname,
   children,
@@ -114,7 +89,16 @@ function UserAppFrame({
     <>
       <UserSidebar />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {isLoading ? <UserLoadingScreen /> : children}
+        {isLoading ? (
+          <AppLoadingScreen
+            title="Loading your progress"
+            description="We’re checking your current onboarding step so this page opens in the correct state."
+            variant="user"
+            fullScreen
+          />
+        ) : (
+          children
+        )}
       </main>
     </>
   );
@@ -126,7 +110,6 @@ export default function AppShell({ children }: AppShellProps) {
   const [role, setRole] = useState<string | null>(null);
 
   const isPublicRoute = PUBLIC_ROUTES.has(pathname);
-  const isAuthOnlyPublicRoute = AUTH_ONLY_PUBLIC_ROUTES.has(pathname);
 
   const syncAuth = useCallback((currentSession: Session | null) => {
     setSession(currentSession);
@@ -220,7 +203,7 @@ export default function AppShell({ children }: AppShellProps) {
     redirect("/login");
   }
 
-  if (session && isAuthOnlyPublicRoute) {
+  if (session && isPublicRoute) {
     redirect(getDefaultRouteForRole(role));
   }
 
@@ -260,6 +243,7 @@ export default function AppShell({ children }: AppShellProps) {
     <div className="flex min-h-dvh flex-col bg-[#F8F9FB] text-[#111827]">
       <div className="flex min-h-dvh flex-1 flex-col items-stretch lg:flex-row">
         {showAdminSidebar && <AdminSidebar />}
+
         {showUserSidebar && (
           <UserStepProvider>
             <UserStepGuard pathname={pathname} />

@@ -1,11 +1,11 @@
 from functools import lru_cache
 from typing import Any
+import secrets
+import string
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel
-from supabase import Client
 
-from app.core.supabase_client import get_service_supabase_client
 from app.lib.email import ConfirmationEmailError, send_confirmation_email
 from app.api.repository.users import UserRepository
 from app.schemas.users import (
@@ -20,11 +20,11 @@ class EmailPayload(BaseModel):
     first_name: str
     last_name: str
     role: str
+    temporary_password: str
 
 
 class UserService:
     def __init__(self) -> None:
-        self.supabase_admin = get_service_supabase_client()
         self.repo = UserRepository()
 
     # =========================
@@ -50,26 +50,51 @@ class UserService:
 
         return new_metadata
 
+    def _generate_temporary_password(self, length: int = 16) -> str:
+        """
+        Generate a secure temporary password.
+        Uses Python built-in cryptographic randomness.
+        """
+        if length < 12:
+            length = 12
+
+        lowercase = string.ascii_lowercase
+        uppercase = string.ascii_uppercase
+        digits = string.digits
+        symbols = "!@#$%^&*()-_=+"
+
+        all_chars = lowercase + uppercase + digits + symbols
+
+        password_chars = [
+            secrets.choice(lowercase),
+            secrets.choice(uppercase),
+            secrets.choice(digits),
+            secrets.choice(symbols),
+        ]
+
+        password_chars.extend(secrets.choice(all_chars) for _ in range(length - 4))
+        secrets.SystemRandom().shuffle(password_chars)
+
+        return "".join(password_chars)
+
     # =========================
     # user flow
     # =========================
 
     def get_my_account(
         self,
-        supabase: Client,
         user_id: str,
     ) -> dict[str, Any]:
         """Return the current user's profile row."""
-        return self.repo.get_my_user_profile(supabase, user_id)
+        return self.repo.get_my_user_profile(user_id)
 
     def update_my_account(
         self,
-        supabase: Client,
         auth_user: Any,
         payload: UpdateUserRequest,
     ) -> dict[str, Any]:
         """Update the logged-in user's auth metadata and profile-facing fields."""
-        existing_profile = self.repo.get_my_user_profile(supabase, auth_user.id)
+        existing_profile = self.repo.get_my_user_profile(auth_user.id)
         update_data = payload.model_dump(exclude_unset=True)
 
         if not update_data:
@@ -78,7 +103,6 @@ class UserService:
         existing_metadata = auth_user.user_metadata or {}
         new_metadata = self._build_metadata_update(existing_metadata, update_data)
 
-        # Only send fields that live in Supabase Auth; profile reads still come from the app table.
         auth_update_payload: dict[str, Any] = {}
 
         if "phone_number" in update_data:
@@ -89,23 +113,18 @@ class UserService:
 
         try:
             if auth_update_payload:
-                # Use the service-role client for auth admin updates; the user-scoped client cannot do this.
-                self.repo.update_auth_user_by_id_admin(
-                    self.supabase_admin,
-                    auth_user.id,
-                    auth_update_payload,
-                )
+                self.repo.update_auth_user_by_id_admin(auth_user.id, auth_update_payload)
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to update auth user: {str(exc)}",
             ) from exc
 
-        return self.repo.get_my_user_profile(supabase, auth_user.id)
+        return self.repo.get_my_user_profile(auth_user.id)
 
-    def get_current_user_step(self, supabase: Client, user_id: str) -> int | None:
+    def get_current_user_step(self, user_id: str) -> int | None:
         """Return the authenticated user's current onboarding step."""
-        user = self.repo.get_my_user_profile(supabase, user_id)
+        user = self.repo.get_my_user_profile(user_id)
         return user.get("current_step")
 
     # =========================
@@ -114,13 +133,12 @@ class UserService:
 
     def get_buyer_seller_users(self) -> list[dict[str, Any]]:
         """List admin-manageable buyer and seller users."""
-        return self.repo.list_buyer_seller_users(self.supabase_admin)
+        return self.repo.list_buyer_seller_users()
 
     def get_buyer_seller_user_by_id(self, user_id: str) -> dict[str, Any]:
         """Return one buyer or seller profile and reject non-managed roles."""
-        user = self.repo.get_user_profile_by_id(self.supabase_admin, user_id)
+        user = self.repo.get_user_profile_by_id(user_id)
 
-        # Admin management endpoints are intentionally limited to buyer/seller accounts.
         if user["role"] not in {"buyer", "seller"}:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -135,17 +153,16 @@ class UserService:
         payload: UpdateUserRequest,
     ) -> dict[str, Any]:
         """Apply admin-driven updates to another user's auth metadata."""
-        existing_profile = self.repo.get_user_profile_by_id(self.supabase_admin, user_id)
+        existing_profile = self.repo.get_user_profile_by_id(user_id)
         update_data = payload.model_dump(exclude_unset=True)
 
         if not update_data:
             return existing_profile
 
-        auth_user = self.repo.get_auth_user_by_id_admin(self.supabase_admin, user_id)
+        auth_user = self.repo.get_auth_user_by_id_admin(user_id)
         existing_metadata = auth_user.user_metadata or {}
         new_metadata = self._build_metadata_update(existing_metadata, update_data)
 
-        # Admin updates may touch both phone and user_metadata in Supabase Auth.
         auth_update_payload: dict[str, Any] = {}
 
         if "phone_number" in update_data:
@@ -156,33 +173,29 @@ class UserService:
 
         try:
             if auth_update_payload:
-                self.repo.update_auth_user_by_id_admin(
-                    self.supabase_admin,
-                    user_id,
-                    auth_update_payload,
-                )
+                self.repo.update_auth_user_by_id_admin(user_id, auth_update_payload)
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to update auth user: {str(exc)}",
             ) from exc
 
-        return self.repo.get_user_profile_by_id(self.supabase_admin, user_id)
+        return self.repo.get_user_profile_by_id(user_id)
 
     # =========================
     # create + email
     # =========================
 
     def create_user_by_admin(self, payload: CreateUserRequest) -> Any:
-        """Create a new auth user and immediately send the confirmation email."""
-        # The onboarding UI uses current_step to decide which step to show first.
+        """Create a new auth user using a generated password and send confirmation email."""
         current_step = get_current_step_for_role(payload.role)
+        temporary_password = self._generate_temporary_password()
 
         try:
-            response = self.supabase_admin.auth.admin.create_user(
+            response = self.repo.create_auth_user_admin(
                 {
                     "email": payload.email,
-                    "password": payload.password,
+                    "password": temporary_password,
                     "email_confirm": False,
                     "phone": payload.phone_number,
                     "user_metadata": {
@@ -206,6 +219,7 @@ class UserService:
                 first_name=payload.first_name,
                 last_name=payload.last_name,
                 role=payload.role,
+                temporary_password=temporary_password,
             )
         )
 
@@ -219,6 +233,7 @@ class UserService:
                 first_name=payload.first_name,
                 last_name=payload.last_name,
                 role=payload.role,
+                temporary_password=payload.temporary_password,
             )
         except ConfirmationEmailError as e:
             raise HTTPException(
@@ -227,11 +242,15 @@ class UserService:
             ) from e
 
     def resend_verification_email_by_admin(
-            self,
-            user_id: str,
+        self,
+        user_id: str,
     ) -> dict[str, str]:
+        """
+        Resend the verification email and also reset the password
+        to a new generated temporary password.
+        """
         profile = self.get_buyer_seller_user_by_id(user_id)
-        auth_user = self.repo.get_auth_user_by_id_admin(self.supabase_admin, user_id)
+        auth_user = self.repo.get_auth_user_by_id_admin(user_id)
 
         metadata = auth_user.user_metadata or {}
         email = getattr(auth_user, "email", None)
@@ -242,21 +261,36 @@ class UserService:
                 detail="Auth user email not found",
             )
 
+        temporary_password = self._generate_temporary_password()
+
+        try:
+            self.repo.update_auth_user_by_id_admin(
+                user_id,
+                {
+                    "password": temporary_password,
+                },
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to reset password: {str(exc)}",
+            ) from exc
+
         self._send_confirmation_email(
             EmailPayload(
                 email=email,
                 first_name=metadata.get("first_name") or "",
                 last_name=metadata.get("last_name") or "",
                 role=metadata.get("role") or profile.get("role") or "",
+                temporary_password=temporary_password,
             )
         )
 
         return {
-            "message": "Verification email resent successfully",
+            "message": "Verification email resent successfully and password reset",
             "user_id": user_id,
             "email": email,
         }
-
 
 
 @lru_cache
