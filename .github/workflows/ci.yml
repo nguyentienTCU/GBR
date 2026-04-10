@@ -47,7 +47,7 @@ jobs:
           SMTP_USERNAME: test-user
           SMTP_PASSWORD: test-password
           SMTP_FROM_EMAIL: no-reply@example.com
-          FRONTEND_LOGIN_URL: http://localhost:3000/login
+          FRONTEND_URL: http://localhost:3000/*
           DOCUSIGN_BUYER_TEMPLATE_ID: 123456789
           DOCUSIGN_SELLER_TEMPLATE_ID: 123456789
         run: python -c "from app.main import app; print(app.title)"

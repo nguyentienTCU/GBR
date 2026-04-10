@@ -18,7 +18,6 @@ class CreateUserRequest(BaseModel):
     last_name: str
     email: EmailStr
     phone_number: str
-    password: str
     role: Role
     company_name: str
 
@@ -34,7 +33,6 @@ class UpdateUserRequest(BaseModel):
 class CurrentStepResponse(BaseModel):
     """Minimal response used by the frontend to gate onboarding routes."""
     step: int | None
-
 
 
 class UserResponse(BaseModel):

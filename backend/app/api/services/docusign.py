@@ -14,9 +14,9 @@ from docusign_esign import (
 )
 from docusign_esign.client.api_exception import ApiException
 from docusign_esign import TemplatesApi
-from supabase import Client
-from app.core.config import get_settings
 from pathlib import Path
+
+from app.core.config import get_settings
 from app.schemas.contracts import ContractUpdateRequest
 from app.schemas.docusign import (
     DocusignTokenResult,
@@ -100,7 +100,6 @@ class DocusignService:
 
     def create_signing_session(
         self,
-        supabase: Client,
         user_id: str,
         return_url: str,
     ) -> CreateSigningSessionResponse:
@@ -110,14 +109,13 @@ class DocusignService:
         print("[DocuSign] API client created")
         envelopes_api = EnvelopesApi(api_client)
         contract = self.contract_repository.get_latest_contract_by_user_id(
-            supabase,
             user_id,
         )
         print(
             f"[DocuSign] contract loaded contract_id={contract['id']} "
             f"stored_envelope_id={contract.get('envelope_id')}"
         )
-        user = self.user_repository.get_user_profile_by_id(supabase, user_id)
+        user = self.user_repository.get_user_profile_by_id(user_id)
         templates_api = TemplatesApi(api_client)
         try:
             templates = templates_api.list_templates(account_id=self.account_id)
@@ -208,7 +206,6 @@ class DocusignService:
                 f"status={envelope_status}"
             )
             self.contract_repository.update_contract(
-                supabase,
                 contract["id"],
                 ContractUpdateRequest(envelope_id=envelope_id),
             )
@@ -263,7 +260,7 @@ class DocusignService:
             signing_url=recipient_view.url,
         )
 
-    def process_connect_event(self, supabase: Client, payload: dict[str, Any]) -> None:
+    def process_connect_event(self, payload: dict[str, Any]) -> None:
         event = payload.get("event")
         data = payload.get("data") or {}
         envelope_id = data.get("envelopeId")
@@ -286,7 +283,6 @@ class DocusignService:
             )
 
         contract = self.contract_repository.get_contract_by_envelope_id(
-            supabase,
             envelope_id,
         )
         if not contract:
@@ -300,7 +296,6 @@ class DocusignService:
         )
 
         self.contract_repository.update_contract(
-            supabase,
             contract["id"],
             ContractUpdateRequest(
                 status="completed",
@@ -308,7 +303,7 @@ class DocusignService:
         )
         print(f"[DocuSign] contract marked completed contract_id={contract['id']}")
 
-        self.user_repository.update_user_step(supabase, contract["user_id"], 2)
+        self.user_repository.update_user_step(contract["user_id"], 2)
         print(
             f"[DocuSign] user advanced to payment step "
             f"user_id={contract['user_id']} step=2"

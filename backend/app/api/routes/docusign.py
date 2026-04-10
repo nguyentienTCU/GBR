@@ -1,12 +1,9 @@
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
-from supabase import Client
 
 from app.api.deps.auth import (
     AuthUser,
-    get_user_supabase,
-    require_admin,
     get_current_user,
 )
 from app.schemas.docusign import (
@@ -58,12 +55,10 @@ def docusign_callback(request: Request) -> CallBackResponse:
 def create_recipient_view(
     payload: Annotated[CreateSigningSessionRequest, Body(...)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
-    supabase: Annotated[Client, Depends(get_user_supabase)],
     docusign_service: Annotated[DocusignService, Depends(get_docusign_service)],
 ) -> CreateSigningSessionResponse:
     try:
         return docusign_service.create_signing_session(
-            supabase=supabase,
             user_id=current_user.id,
             return_url=payload.return_url,
         )
@@ -78,11 +73,10 @@ def create_recipient_view(
 @router.post("/connect", status_code=status.HTTP_200_OK)
 def handle_docusign_connect(
     payload: Annotated[dict[str, Any], Body(...)],
-    supabase: Annotated[Client, Depends(get_user_supabase)],
     docusign_service: Annotated[DocusignService, Depends(get_docusign_service)]
 ) -> dict[str, str]:
     try:
-        docusign_service.process_connect_event(supabase, payload)
+        docusign_service.process_connect_event(payload)
         return {"status": "ok"}
     except DocusignServiceError as e:
         raise HTTPException(

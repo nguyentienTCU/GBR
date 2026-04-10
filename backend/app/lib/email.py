@@ -1,7 +1,7 @@
 import smtplib
 from email.message import EmailMessage
 
-from app.core.config import get_settings  # adjust import path if needed
+from app.core.config import get_settings
 from app.core.supabase_client import get_service_supabase_client
 
 
@@ -26,7 +26,6 @@ def send_email(to_email: str, subject: str, body: str) -> None:
     """
     Send a plain-text email using SMTP credentials from Settings.
     """
-
     settings = get_settings()
 
     message = EmailMessage()
@@ -51,8 +50,9 @@ def send_account_created_email(
     last_name: str,
     role: str,
     confirmation_link: str,
+    temporary_password: str,
 ) -> None:
-    full_name = f"{first_name} {last_name}".strip()
+    full_name = f"{first_name} {last_name}".strip() or "User"
 
     subject = "Confirm your account"
     body = f"""
@@ -63,9 +63,12 @@ An account has been created for you.
 Account details:
 - Email: {to_email}
 - Role: {role}
+- Temporary password: {temporary_password}
 
 Please confirm your email and complete your account setup here:
 {confirmation_link}
+
+For security, please log in and change your password after confirming your account.
 
 If you did not expect this email, you can ignore it.
 
@@ -86,6 +89,7 @@ def send_confirmation_email(
     first_name: str,
     last_name: str,
     role: str,
+    temporary_password: str,
 ) -> None:
     supabase = get_service_supabase_client()
 
@@ -108,6 +112,7 @@ def send_confirmation_email(
             last_name=last_name,
             role=role,
             confirmation_link=action_link,
+            temporary_password=temporary_password,
         )
     except EmailSendError as e:
         raise ConfirmationEmailError(

@@ -9,7 +9,7 @@ function formatRole(role: User["role"]) {
 }
 
 function formatStep(step: number | null) {
-  if (step === null) return "N/A";
+  if (step === null) return "";
 
   const stepMap: Record<number, string> = {
     1: "Agreement",

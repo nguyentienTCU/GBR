@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Lock, Mail, Phone, User, UserPlus } from "lucide-react";
+import { Building2, Mail, Phone, User, UserPlus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Notification } from "@/components/ui/Notification";
@@ -13,7 +13,6 @@ const initialFormData: CreateUserPayload = {
   last_name: "",
   email: "",
   phone_number: "",
-  password: "",
   role: "buyer",
   company_name: "",
 };
@@ -28,12 +27,7 @@ const roleOptions: { label: string; value: UserRole }[] = [
 const createFieldLabels: Record<
   keyof Pick<
     CreateUserPayload,
-    | "first_name"
-    | "last_name"
-    | "email"
-    | "phone_number"
-    | "password"
-    | "company_name"
+    "first_name" | "last_name" | "email" | "phone_number" | "company_name"
   >,
   string
 > = {
@@ -41,7 +35,6 @@ const createFieldLabels: Record<
   last_name: "Last name",
   email: "Email",
   phone_number: "Phone number",
-  password: "Password",
   company_name: "Company name",
 };
 
@@ -52,21 +45,23 @@ function trimCreateUserPayload(data: CreateUserPayload): CreateUserPayload {
     last_name: data.last_name.trim(),
     email: data.email.trim(),
     phone_number: data.phone_number.trim(),
-    password: data.password.trim(),
     company_name: data.company_name.trim(),
   };
 }
 
 function validateCreateUserPayload(data: CreateUserPayload): string | null {
   const missing: string[] = [];
+
   (Object.keys(createFieldLabels) as (keyof typeof createFieldLabels)[]).forEach(
     (key) => {
       if (!data[key]) missing.push(createFieldLabels[key]);
     },
   );
+
   if (!data.role) missing.push("Role");
   if (missing.length === 0) return null;
-  return `Please fill in all fields.`;
+
+  return "Please fill in all fields.";
 }
 
 type FormFieldProps = {
@@ -144,9 +139,9 @@ export default function CreateUserForm() {
     setIsSubmitting(true);
 
     try {
-      const response = await createUser(trimmed);
+      await createUser(trimmed);
       setSuccessMessage(
-        `User created successfully.`,
+        "User created successfully. A temporary password and verification email have been sent.",
       );
       setFormData(initialFormData);
     } catch (error) {
@@ -168,6 +163,7 @@ export default function CreateUserForm() {
           onClose={() => setErrorMessage("")}
         />
       ) : null}
+
       {successMessage ? (
         <Notification
           open
@@ -236,16 +232,6 @@ export default function CreateUserForm() {
               icon={Phone}
             />
 
-            <FormField
-              id="password"
-              label="Password"
-              type="password"
-              placeholder="Create a password"
-              value={formData.password}
-              onChange={(value) => updateField("password", value)}
-              icon={Lock}
-            />
-
             <div>
               <label
                 htmlFor="role"
@@ -271,16 +257,16 @@ export default function CreateUserForm() {
                 </select>
               </div>
             </div>
-          </div>
 
-          <FormField
-            id="company_name"
-            label="Company Name"
-            placeholder="Enter company name"
-            value={formData.company_name}
-            onChange={(value) => updateField("company_name", value)}
-            icon={Building2}
-          />
+            <FormField
+              id="company_name"
+              label="Company Name"
+              placeholder="Enter company name"
+              value={formData.company_name}
+              onChange={(value) => updateField("company_name", value)}
+              icon={Building2}
+            />
+          </div>
 
           <div className="flex justify-stretch sm:justify-end">
             <Button
