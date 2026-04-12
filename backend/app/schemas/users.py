@@ -4,14 +4,6 @@ from pydantic import AliasChoices, BaseModel, EmailStr, Field
 
 Role = Literal["admin", "mod", "buyer", "seller"]
 
-
-def get_current_step_for_role(role: Role) -> int | None:
-    """Return the onboarding step to assign when a new user is created."""
-    if role in {"buyer", "seller"}:
-        return 1
-    return None
-
-
 class CreateUserRequest(BaseModel):
     """Payload used by admins to create a new user account."""
     first_name: str

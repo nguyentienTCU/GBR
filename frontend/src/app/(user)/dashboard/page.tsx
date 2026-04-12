@@ -40,7 +40,8 @@ function ProgressBar({ value }: { value: number }) {
 
 export default function DashboardPage() {
   const { currentStep, isLoading } = useUserStep();
-  const progress = isLoading ? 0 : Math.min(100, currentStep >= 2 ? 100 : 50);
+  const progress = isLoading ? 0 : Math.min(100, currentStep / 2 * 100);
+  console.log("Current Step:", currentStep, "Progress:", progress);
 
   return (
     <div className="min-h-dvh bg-[radial-gradient(circle_at_top_right,_rgba(201,166,91,0.08),_transparent_22%),linear-gradient(180deg,_#F8FAFD_0%,_#F4F7FB_100%)]">

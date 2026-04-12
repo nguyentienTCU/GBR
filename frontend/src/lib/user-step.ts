@@ -6,17 +6,9 @@ export const USER_STEP_ROUTES = {
 } as const;
 
 export const USER_STEP_ROUTE_REQUIREMENTS = [
-  { href: USER_STEP_ROUTES.agreement, minStep: 1 },
-  { href: USER_STEP_ROUTES.depositFees, minStep: 2 },
+  { href: USER_STEP_ROUTES.agreement, minStep: 0 },
+  { href: USER_STEP_ROUTES.depositFees, minStep: 1 },
 ] as const;
-
-export function normalizeCurrentStep(step: number | null | undefined) {
-  if (step == null || Number.isNaN(step)) {
-    return 1;
-  }
-
-  return Math.max(1, Math.trunc(step));
-}
 
 export function canAccessUserRoute(pathname: string, currentStep: number) {
   const route = USER_STEP_ROUTE_REQUIREMENTS.find(({ href }) => href === pathname);
