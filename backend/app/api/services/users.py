@@ -11,7 +11,6 @@ from app.api.repository.users import UserRepository
 from app.schemas.users import (
     CreateUserRequest,
     UpdateUserRequest,
-    get_current_step_for_role,
 )
 
 
@@ -188,7 +187,6 @@ class UserService:
 
     def create_user_by_admin(self, payload: CreateUserRequest) -> Any:
         """Create a new auth user using a generated password and send confirmation email."""
-        current_step = get_current_step_for_role(payload.role)
         temporary_password = self._generate_temporary_password()
 
         try:
@@ -202,7 +200,7 @@ class UserService:
                         "first_name": payload.first_name,
                         "last_name": payload.last_name,
                         "role": payload.role,
-                        "current_step": current_step,
+                        "current_step": 0,
                         "company_name": payload.company_name,
                     },
                 }

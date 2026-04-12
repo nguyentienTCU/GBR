@@ -106,7 +106,6 @@ class DocusignService:
         """Create or reuse an active envelope and return an embedded signing URL."""
         print(f"[DocuSign] create_signing_session start user_id={user_id}")
         api_client = self.create_api_client()
-        print("[DocuSign] API client created")
         envelopes_api = EnvelopesApi(api_client)
         contract = self.contract_repository.get_latest_contract_by_user_id(
             user_id,
@@ -116,19 +115,19 @@ class DocusignService:
             f"stored_envelope_id={contract.get('envelope_id')}"
         )
         user = self.user_repository.get_user_profile_by_id(user_id)
-        templates_api = TemplatesApi(api_client)
-        try:
-            templates = templates_api.list_templates(account_id=self.account_id)
-            for template in templates.envelope_templates or []:
-                print(f"[DocuSign] available template template_id={template.template_id} "
-                      f"name={template.name}")
-        except ApiException as e:
-            body = getattr(e, "body", "") or ""
-            print("[DocuSign] failed to list templates")
-            print("[DocuSign] status:", e.status)
-            print("[DocuSign] reason:", e.reason)
-            print("[DocuSign] body:", body)
-            raise DocusignServiceError(f"Failed to list templates: {body}") from e
+        # templates_api = TemplatesApi(api_client)
+        # try:
+        #     templates = templates_api.list_templates(account_id=self.account_id)
+        #     for template in templates.envelope_templates or []:
+        #         print(f"[DocuSign] available template template_id={template.template_id} "
+        #               f"name={template.name}")
+        # except ApiException as e:
+        #     body = getattr(e, "body", "") or ""
+        #     print("[DocuSign] failed to list templates")
+        #     print("[DocuSign] status:", e.status)
+        #     print("[DocuSign] reason:", e.reason)
+        #     print("[DocuSign] body:", body)
+        #     raise DocusignServiceError(f"Failed to list templates: {body}") from e
 
         signer_name = self._get_signer_name(user)
         envelope_id = contract.get("envelope_id")
@@ -168,14 +167,14 @@ class DocusignService:
                 name=signer_name,
                 role_name="Client",
                 client_user_id=user["id"],
-                tabs=Tabs(
-                    text_tabs=[
-                        Text(
-                            tab_label="full_name",
-                            value=signer_name,
-                        )
-                    ]
-                ),
+                # tabs=Tabs(
+                #     text_tabs=[
+                #         Text(
+                #             tab_label="full_name",
+                #             value=signer_name,
+                #         )
+                #     ]
+                # ),
             )
             envelope_definition = EnvelopeDefinition(
                 template_id=template_id,
@@ -303,7 +302,7 @@ class DocusignService:
         )
         print(f"[DocuSign] contract marked completed contract_id={contract['id']}")
 
-        self.user_repository.update_user_step(contract["user_id"], 2)
+        self.user_repository.update_user_step(contract["user_id"], 1)
         print(
             f"[DocuSign] user advanced to payment step "
             f"user_id={contract['user_id']} step=2"

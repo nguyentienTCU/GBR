@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -39,9 +39,6 @@ const agreementSections = [
 
 export default function AgreementPage() {
   const router = useRouter();
-  const signingFrameRef = useRef<HTMLIFrameElement | null>(null);
-  const redirectTimeoutRef = useRef<number | null>(null);
-  const hasHandledCompletionRef = useRef(false);
   const [signingUrl, setSigningUrl] = useState("");
   const [isLoadingSigningUrl, setIsLoadingSigningUrl] = useState(false);
   const [signingError, setSigningError] = useState("");
@@ -58,6 +55,7 @@ export default function AgreementPage() {
   async function handleStartSigning() {
     try {
       setShowSigningFrame(true);
+      setIsPollingStep(true);
       setIsLoadingSigningUrl(true);
       setSigningError("");
 
@@ -67,6 +65,8 @@ export default function AgreementPage() {
 
       setSigningUrl(response.signing_url);
     } catch (error) {
+      setShowSigningFrame(false);
+      setIsPollingStep(false);
       setSigningError(
         error instanceof Error
           ? error.message
@@ -74,31 +74,6 @@ export default function AgreementPage() {
       );
     } finally {
       setIsLoadingSigningUrl(false);
-    }
-  }
-
-  function handleSigningFrameLoad() {
-    const frame = signingFrameRef.current;
-    if (!frame?.contentWindow) return;
-
-    try {
-      const iframeUrl = new URL(frame.contentWindow.location.href);
-      if (iframeUrl.origin !== window.location.origin) {
-        return;
-      }
-
-      if (
-        iframeUrl.pathname === USER_STEP_ROUTES.agreement &&
-        iframeUrl.searchParams.get("signingReturn") === "1"
-      ) {
-        hasHandledCompletionRef.current = false;
-        setShowSigningFrame(false);
-        setSigningUrl("");
-        setIsPollingStep(true);
-        void refreshCurrentStep();
-      }
-    } catch {
-      // The iframe is cross-origin until DocuSign returns control back to our app.
     }
   }
 
@@ -113,50 +88,26 @@ export default function AgreementPage() {
   }, [isPollingStep, refreshCurrentStep]);
 
   useEffect(() => {
-    if (
-      !isPollingStep ||
-      isStepLoading ||
-      currentStep < 2 ||
-      notificationOpen ||
-      hasHandledCompletionRef.current
-    ) {
+    if (!isPollingStep || isStepLoading || currentStep < 2) {
       return;
     }
 
-    hasHandledCompletionRef.current = true;
+    setShowSigningFrame(false);
+    setSigningUrl("");
     setIsPollingStep(false);
     setNotificationOpen(true);
-    redirectTimeoutRef.current = window.setTimeout(() => {
-      router.push(USER_STEP_ROUTES.depositFees);
-    }, 1800);
-
-    return () => {
-      if (redirectTimeoutRef.current != null) {
-        window.clearTimeout(redirectTimeoutRef.current);
-      }
-    };
-  }, [currentStep, isPollingStep, isStepLoading, notificationOpen, router]);
-
-  useEffect(() => {
-    return () => {
-      if (redirectTimeoutRef.current != null) {
-        window.clearTimeout(redirectTimeoutRef.current);
-      }
-    };
-  }, []);
+  }, [currentStep, isPollingStep, isStepLoading]);
 
   return (
     <div className="min-h-dvh bg-[radial-gradient(circle_at_top_right,_rgba(201,166,91,0.08),_transparent_22%),linear-gradient(180deg,_#F8FAFD_0%,_#F4F7FB_100%)]">
       <Notification
         open={notificationOpen}
         onClose={() => {
-          hasHandledCompletionRef.current = true;
           setNotificationOpen(false);
-          router.push(USER_STEP_ROUTES.depositFees);
         }}
         variant="success"
         title="Agreement Completed"
-        message="Your signed agreement has been received. Redirecting you to the deposit fee step now."
+        message="Your signed agreement has been received. The next step is now unlocked."
       />
 
       <div className="border-b border-[#DDE5F0] bg-white/92 px-5 py-3 shadow-[0_2px_14px_rgba(10,17,32,0.05)] backdrop-blur sm:px-6 lg:px-10">
@@ -245,10 +196,8 @@ export default function AgreementPage() {
               <div className="relative overflow-hidden rounded-[20px] border border-[#E2E8F2] bg-white">
                 {signingUrl ? (
                   <iframe
-                    ref={signingFrameRef}
                     title="DocuSign agreement signing"
                     src={signingUrl}
-                    onLoad={handleSigningFrameLoad}
                     className="h-[780px] w-full bg-white"
                   />
                 ) : (

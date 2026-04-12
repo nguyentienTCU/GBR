@@ -14,7 +14,6 @@ import {
 import {
   canAccessUserRoute,
   getNextUnlockedUserRoute,
-  normalizeCurrentStep,
 } from "@/lib/user-step";
 import { subscribeToAuthStateChange, getCurrentSession } from "@/lib/auth";
 import { getCurrentUserStep } from "@/service/users.service";
@@ -40,10 +39,10 @@ export function UserStepProvider({ children }: UserStepProviderProps) {
   const hasResolvedInitialStepRef = useRef(false);
 
   const refreshCurrentStep = useCallback(async () => {
-    const nextStep = normalizeCurrentStep(await getCurrentUserStep());
-    setCurrentStep(nextStep);
+    const step = await getCurrentUserStep();
+    setCurrentStep(step);
     setIsLoading(false);
-    return nextStep;
+    return step;
   }, []);
 
   useEffect(() => {
@@ -71,7 +70,7 @@ export function UserStepProvider({ children }: UserStepProviderProps) {
       }
 
       try {
-        const nextStep = normalizeCurrentStep(await getCurrentUserStep());
+        const nextStep = await getCurrentUserStep();
         if (!mounted || requestIdRef.current !== requestId) return;
         setCurrentStep(nextStep);
         hasResolvedInitialStepRef.current = true;
