@@ -22,11 +22,6 @@ class UpdateUserRequest(BaseModel):
     company_name: str | None = None
 
 
-class CurrentStepResponse(BaseModel):
-    """Minimal response used by the frontend to gate onboarding routes."""
-    step: int | None
-
-
 class UserResponse(BaseModel):
     """User profile returned by read and update endpoints."""
     id: str

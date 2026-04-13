@@ -72,22 +72,16 @@ class ContractRepository:
         return result.data or []
 
     def get_latest_contract_by_user_id(
-        self,
-        user_id: str,
-    ) -> dict[str, Any]:
-        """Return the most recent contract row for a user, creating one if needed."""
+            self,
+            user_id: str,
+    ) -> dict[str, Any] | None:
+        """Return the most recent contract row for a user, or None if none exists."""
         contracts = self.get_contracts_by_user_id(user_id)
 
         if contracts:
             return contracts[0]
 
-        return self.create_contract(
-            ContractCreateRequest(
-                user_id=user_id,
-                envelope_id=None,
-                time_started=datetime.now(timezone.utc),
-            )
-        )
+        return None
 
     def create_contract(
         self,

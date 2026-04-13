@@ -7,8 +7,10 @@ import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
+  Clock3,
   LoaderCircle,
   ShieldCheck,
+  Sparkles,
   UserCircle2,
 } from "lucide-react";
 
@@ -39,18 +41,25 @@ const agreementSections = [
 
 export default function AgreementPage() {
   const router = useRouter();
+
   const [signingUrl, setSigningUrl] = useState("");
   const [isLoadingSigningUrl, setIsLoadingSigningUrl] = useState(false);
   const [signingError, setSigningError] = useState("");
   const [showSigningFrame, setShowSigningFrame] = useState(false);
   const [isPollingStep, setIsPollingStep] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [pollingAttempts, setPollingAttempts] = useState(0);
+
   const {
     currentStep,
     isLoading: isStepLoading,
     refreshCurrentStep,
   } = useUserStep();
-  const isAgreementComplete = !isPollingStep && currentStep >= 2;
+
+  const isAgreementComplete = !isPollingStep && currentStep >= 1;
+
+  const showPostSigningWaitingScreen =
+  isPollingStep && !showSigningFrame && !isAgreementComplete;
 
   async function handleStartSigning() {
     try {
@@ -58,9 +67,10 @@ export default function AgreementPage() {
       setIsPollingStep(true);
       setIsLoadingSigningUrl(true);
       setSigningError("");
+      setPollingAttempts(0);
 
       const response = await createRecipientView({
-        return_url: `${window.location.origin}/agreement?signingReturn=1`,
+        return_url: `${window.location.origin}/agreement/return`,
       });
 
       setSigningUrl(response.signing_url);
@@ -78,17 +88,48 @@ export default function AgreementPage() {
   }
 
   useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+  
+      if (event.data?.type !== "DOCUSIGN_SIGNING_DONE") return;
+  
+      setShowSigningFrame(false);
+      setSigningUrl("");
+      setSigningError("");
+      setPollingAttempts(0);
+      setIsPollingStep(true);
+  
+      void refreshCurrentStep();
+    }
+  
+    window.addEventListener("message", handleMessage);
+  
+    return () => window.removeEventListener("message", handleMessage);
+  }, [refreshCurrentStep]);
+
+  useEffect(() => {
     if (!isPollingStep) return;
 
+    let attempts = 0;
+
     const intervalId = window.setInterval(() => {
+      attempts += 1;
+      setPollingAttempts(attempts);
       void refreshCurrentStep();
+
+      if (attempts >= 30) {
+        setIsPollingStep(false);
+        setSigningError(
+          "We’re still finalizing your signed agreement. Please wait a moment and refresh the page if needed.",
+        );
+      }
     }, 2000);
 
     return () => window.clearInterval(intervalId);
   }, [isPollingStep, refreshCurrentStep]);
 
   useEffect(() => {
-    if (!isPollingStep || isStepLoading || currentStep < 2) {
+    if (!isPollingStep || isStepLoading || currentStep < 1) {
       return;
     }
 
@@ -162,7 +203,10 @@ export default function AgreementPage() {
 
                   <div className="rounded-[20px] border border-white/70 bg-white/70 p-5 shadow-[0_12px_28px_rgba(20,33,61,0.06)] backdrop-blur">
                     <div className="flex items-center gap-3">
-                      <ShieldCheck className="h-5 w-5 text-[#B8851C]" strokeWidth={2} />
+                      <ShieldCheck
+                        className="h-5 w-5 text-[#B8851C]"
+                        strokeWidth={2}
+                      />
                       <p className="text-sm font-semibold text-[#223250]">
                         Next step unlocked
                       </p>
@@ -182,7 +226,77 @@ export default function AgreementPage() {
               </div>
             ) : null}
 
-            {isPollingStep ? (
+            {showPostSigningWaitingScreen ? (
+              <div className="rounded-[22px] border border-[#E7D3A1] bg-[linear-gradient(135deg,_#FFFDF7_0%,_#FFF8EA_55%,_#FFFFFF_100%)] px-6 py-10 sm:px-10 sm:py-14">
+                <div className="mx-auto max-w-2xl text-center">
+                  <div className="mx-auto flex h-18 w-18 items-center justify-center rounded-full bg-[#0B1630] text-[#F5E6B8] shadow-[0_18px_40px_rgba(11,22,48,0.18)]">
+                    <LoaderCircle className="h-8 w-8 animate-spin" strokeWidth={2} />
+                  </div>
+
+                  <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#E8D9B0] bg-white px-4 py-2 text-sm font-semibold text-[#9A741A] shadow-sm">
+                    <Sparkles className="h-4 w-4" strokeWidth={2} />
+                    Finalizing your signed agreement
+                  </div>
+
+                  <h2 className="mt-5 text-3xl font-semibold tracking-[-0.03em] text-[#14213D]">
+                    Please hold on while we update your account
+                  </h2>
+
+                  <p className="mt-4 text-base leading-7 text-[#5F6F89]">
+                    Your signature has been submitted successfully. We’re now
+                    waiting for DocuSign and our backend to finish syncing your
+                    completed agreement.
+                  </p>
+
+                  <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-[18px] border border-[#E7ECF3] bg-white p-4 text-left shadow-sm">
+                      <p className="text-sm font-semibold text-[#223250]">
+                        Signature received
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[#62738E]">
+                        Your document was returned from DocuSign.
+                      </p>
+                    </div>
+
+                    <div className="rounded-[18px] border border-[#E7ECF3] bg-white p-4 text-left shadow-sm">
+                      <div className="flex items-center gap-2">
+                        <Clock3 className="h-4 w-4 text-[#B8851C]" strokeWidth={2} />
+                        <p className="text-sm font-semibold text-[#223250]">
+                          Updating step status
+                        </p>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-[#62738E]">
+                        We’re refreshing your account progress automatically.
+                      </p>
+                    </div>
+
+                    <div className="rounded-[18px] border border-[#E7ECF3] bg-white p-4 text-left shadow-sm">
+                      <p className="text-sm font-semibold text-[#223250]">
+                        Next step
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[#62738E]">
+                        Deposit fee will unlock as soon as syncing is complete.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 overflow-hidden rounded-full bg-[#E9EEF5]">
+                    <div
+                      className="h-2 rounded-full bg-[#C9A65B] transition-all duration-500"
+                      style={{
+                        width: `${Math.min(((pollingAttempts + 1) / 30) * 100, 92)}%`,
+                      }}
+                    />
+                  </div>
+
+                  <p className="mt-3 text-sm text-[#7A879C]">
+                    This usually takes just a few seconds.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+
+            {!showPostSigningWaitingScreen && isPollingStep ? (
               <div className="mb-4 flex items-center gap-3 rounded-[18px] border border-[#E6D4A4] bg-[#FFF9ED] px-4 py-3 text-sm text-[#7A5B14]">
                 <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} />
                 <p>
@@ -206,7 +320,10 @@ export default function AgreementPage() {
                     <div className="max-h-[390px] overflow-y-auto px-4 py-8 sm:px-8 lg:px-10">
                       <div className="mx-auto max-w-[700px] rounded-[4px] border border-[#E5EAF2] bg-white px-7 py-8 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:px-10 sm:py-10">
                         {agreementSections.map((section, index) => (
-                          <section key={section.title} className={index === 0 ? "" : "mt-10"}>
+                          <section
+                            key={section.title}
+                            className={index === 0 ? "" : "mt-10"}
+                          >
                             <h2
                               className={`text-[#20304C] [font-family:Georgia,serif] ${
                                 index === 0
@@ -242,12 +359,17 @@ export default function AgreementPage() {
               </div>
             ) : null}
 
-            {!showSigningFrame && !isAgreementComplete ? (
+            {!showSigningFrame &&
+            !isAgreementComplete &&
+            !showPostSigningWaitingScreen ? (
               <div className="rounded-[20px] border border-[#E2E8F2] bg-white">
                 <div className="pointer-events-none max-h-[390px] overflow-y-auto px-4 py-8 sm:px-8 lg:px-10">
                   <div className="mx-auto max-w-[700px] rounded-[4px] border border-[#E5EAF2] bg-white px-7 py-8 shadow-[0_14px_32px_rgba(15,23,42,0.06)] sm:px-10 sm:py-10">
                     {agreementSections.map((section, index) => (
-                      <section key={section.title} className={index === 0 ? "" : "mt-10"}>
+                      <section
+                        key={section.title}
+                        className={index === 0 ? "" : "mt-10"}
+                      >
                         <h2
                           className={`text-[#20304C] [font-family:Georgia,serif] ${
                             index === 0
@@ -276,12 +398,17 @@ export default function AgreementPage() {
                 </div>
               </div>
             ) : null}
+
             {signingError ? (
-              <p className="px-2 pt-4 text-sm font-medium text-[#B42318]">{signingError}</p>
+              <div className="mt-4 rounded-[18px] border border-red-200 bg-red-50 px-4 py-3">
+                <p className="text-sm font-medium text-[#B42318]">
+                  {signingError}
+                </p>
+              </div>
             ) : null}
           </div>
 
-          {!isAgreementComplete ? (
+          {!isAgreementComplete && !showPostSigningWaitingScreen ? (
             <div className="border-t border-[#E4EAF3] px-4 py-4 sm:px-5">
               <Button
                 type="button"

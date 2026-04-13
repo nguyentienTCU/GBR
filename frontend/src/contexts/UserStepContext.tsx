@@ -15,8 +15,11 @@ import {
   canAccessUserRoute,
   getNextUnlockedUserRoute,
 } from "@/lib/user-step";
-import { subscribeToAuthStateChange, getCurrentSession } from "@/lib/auth";
-import { getCurrentUserStep } from "@/service/users.service";
+import {
+  subscribeToAuthStateChange,
+  getCurrentSession,
+  refreshCurrentSession,
+} from "@/lib/auth";
 
 type UserStepContextValue = {
   currentStep: number;
@@ -32,57 +35,64 @@ type UserStepProviderProps = {
   children: ReactNode;
 };
 
+function extractStepFromSession(
+  session: Awaited<ReturnType<typeof getCurrentSession>>,
+) {
+  const rawStep = session?.user.user_metadata?.current_step;
+
+  if (typeof rawStep === "number" && Number.isFinite(rawStep)) {
+    return rawStep;
+  }
+
+  if (typeof rawStep === "string") {
+    const parsed = Number(rawStep);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 0;
+}
+
 export function UserStepProvider({ children }: UserStepProviderProps) {
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const requestIdRef = useRef(0);
-  const hasResolvedInitialStepRef = useRef(false);
 
   const refreshCurrentStep = useCallback(async () => {
-    const step = await getCurrentUserStep();
-    setCurrentStep(step);
+    const refreshedSession = await refreshCurrentSession();
+    const nextStep = extractStepFromSession(refreshedSession);
+    setCurrentStep(nextStep);
     setIsLoading(false);
-    return step;
+    return nextStep;
   }, []);
 
   useEffect(() => {
     let mounted = true;
 
     async function syncCurrentStep() {
-      const session = await getCurrentSession();
-
-      if (!mounted) return;
-
-      const role = session?.user.user_metadata?.role;
-      if (role !== "buyer" && role !== "seller") {
-        setCurrentStep(1);
-        setIsLoading(false);
-        hasResolvedInitialStepRef.current = true;
-        return;
-      }
-
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
-      const isInitialLoad = !hasResolvedInitialStepRef.current;
-
-      if (isInitialLoad) {
-        setIsLoading(true);
-      }
 
       try {
-        const nextStep = await getCurrentUserStep();
+        const session = await getCurrentSession();
+
         if (!mounted || requestIdRef.current !== requestId) return;
-        setCurrentStep(nextStep);
-        hasResolvedInitialStepRef.current = true;
-      } catch (error) {
-        console.error("Failed to fetch current step:", error);
-        if (!mounted || requestIdRef.current !== requestId) return;
-        if (isInitialLoad) {
-          setCurrentStep(1);
-          hasResolvedInitialStepRef.current = true;
+
+        const role = session?.user.user_metadata?.role;
+        if (role !== "buyer" && role !== "seller") {
+          setCurrentStep(0);
+          setIsLoading(false);
+          return;
         }
+
+        setCurrentStep(extractStepFromSession(session));
+      } catch (error) {
+        console.error("Failed to sync current step from session:", error);
+        if (!mounted || requestIdRef.current !== requestId) return;
+        setCurrentStep(0);
       } finally {
-        if (mounted && requestIdRef.current === requestId && isInitialLoad) {
+        if (mounted && requestIdRef.current === requestId) {
           setIsLoading(false);
         }
       }
@@ -90,8 +100,17 @@ export function UserStepProvider({ children }: UserStepProviderProps) {
 
     void syncCurrentStep();
 
-    const unsubscribe = subscribeToAuthStateChange(() => {
-      void syncCurrentStep();
+    const unsubscribe = subscribeToAuthStateChange((session) => {
+      const role = session?.user.user_metadata?.role;
+
+      if (role !== "buyer" && role !== "seller") {
+        setCurrentStep(0);
+        setIsLoading(false);
+        return;
+      }
+
+      setCurrentStep(extractStepFromSession(session));
+      setIsLoading(false);
     });
 
     return () => {
@@ -105,14 +124,17 @@ export function UserStepProvider({ children }: UserStepProviderProps) {
       currentStep,
       isLoading,
       refreshCurrentStep,
-      canAccessPath: (pathname: string) => canAccessUserRoute(pathname, currentStep),
+      canAccessPath: (pathname: string) =>
+        canAccessUserRoute(pathname, currentStep),
       nextUnlockedPath: getNextUnlockedUserRoute(currentStep),
     }),
     [currentStep, isLoading, refreshCurrentStep],
   );
 
   return (
-    <UserStepContext.Provider value={value}>{children}</UserStepContext.Provider>
+    <UserStepContext.Provider value={value}>
+      {children}
+    </UserStepContext.Provider>
   );
 }
 

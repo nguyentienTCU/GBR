@@ -11,8 +11,7 @@ from app.schemas.users import (
     CreateUserRequest,
     SendVerificationEmailResponse,
     UpdateUserRequest,
-    UserResponse,
-    CurrentStepResponse
+    UserResponse
 )
 from app.api.services.users import UserService, get_users_service
 
@@ -37,18 +36,6 @@ def update_me(
     user_service: Annotated[UserService, Depends(get_users_service)],
 ) -> UserResponse:
     return user_service.update_my_account(auth_user, payload)
-
-
-@router.get("/current-step", response_model=CurrentStepResponse)
-def get_current_step(
-    auth_user: Annotated[AuthUser, Depends(get_current_user)],
-    user_service: Annotated[UserService, Depends(get_users_service)],
-) -> CurrentStepResponse:
-    """Return the current onboarding step for the authenticated user."""
-    current_step = user_service.get_current_user_step(auth_user.id)
-    return CurrentStepResponse(
-        step=current_step,
-    )
 
 
 # -------------- Admin-only user management routes --------------

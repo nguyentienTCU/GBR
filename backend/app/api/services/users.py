@@ -121,10 +121,6 @@ class UserService:
 
         return self.repo.get_my_user_profile(auth_user.id)
 
-    def get_current_user_step(self, user_id: str) -> int | None:
-        """Return the authenticated user's current onboarding step."""
-        user = self.repo.get_my_user_profile(user_id)
-        return user.get("current_step")
 
     # =========================
     # admin flow

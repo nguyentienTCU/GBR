@@ -92,10 +92,16 @@ def send_confirmation_email(
     temporary_password: str,
 ) -> None:
     supabase = get_service_supabase_client()
+    settings = get_settings()
 
     try:
         response = supabase.auth.admin.generate_link(
-            {"type": "invite", "email": email}
+            {"type": "invite",
+             "email": email,
+             "options": {
+                 "redirect_to": settings.frontend_url,
+                },
+             }
         )
     except Exception as e:
         raise ConfirmationEmailError(

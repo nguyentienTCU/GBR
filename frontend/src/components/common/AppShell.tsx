@@ -32,6 +32,7 @@ const USER_ALLOWED_ROUTES = new Set([
   "/dashboard",
   "/agreement",
   "/deposit-fees",
+  "/agreement/return"
 ]);
 
 function isAllowedRoute(

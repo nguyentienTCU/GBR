@@ -85,27 +85,46 @@ class UserRepository:
         user_id: str,
         step: int,
     ) -> dict[str, Any]:
-        """Update only the onboarding step stored in the application user table."""
+        """Update onboarding step via Supabase Auth metadata (safe merge)."""
+
         try:
-            result = (
-                self.supabase.table("user")
-                .update({"current_step": step})
-                .eq("id", user_id)
-                .execute()
+            # 1. get current auth user
+            user_response = self.supabase.auth.admin.get_user_by_id(user_id)
+            user = user_response.user
+
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found",
+                )
+
+            existing_metadata = user.user_metadata or {}
+
+            # 2. merge metadata
+            updated_metadata = {
+                **existing_metadata,
+                "current_step": step,
+            }
+
+            # 3. update
+            result = self.supabase.auth.admin.update_user_by_id(
+                user_id,
+                {"user_metadata": updated_metadata},
             )
+
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Failed to update user step: {str(exc)}",
             ) from exc
 
-        if not result.data:
+        if not result.user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Failed to update user step",
             )
 
-        return result.data[0]
+        return result.user
 
     # =========================
     # auth (admin only)

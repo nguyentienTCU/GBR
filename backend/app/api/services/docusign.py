@@ -103,31 +103,30 @@ class DocusignService:
         user_id: str,
         return_url: str,
     ) -> CreateSigningSessionResponse:
-        """Create or reuse an active envelope and return an embedded signing URL."""
+        """Reuse the user's existing contract row and create/reuse a DocuSign envelope."""
         print(f"[DocuSign] create_signing_session start user_id={user_id}")
+
         api_client = self.create_api_client()
         envelopes_api = EnvelopesApi(api_client)
-        contract = self.contract_repository.get_latest_contract_by_user_id(
-            user_id,
-        )
+
+        contract = self.contract_repository.get_latest_contract_by_user_id(user_id)
+        if not contract:
+            raise DocusignServiceError(
+                "No contract record exists for this user. "
+                "Please verify the account first or contact support."
+            )
+
         print(
             f"[DocuSign] contract loaded contract_id={contract['id']} "
             f"stored_envelope_id={contract.get('envelope_id')}"
         )
+
         user = self.user_repository.get_user_profile_by_id(user_id)
-        # templates_api = TemplatesApi(api_client)
-        # try:
-        #     templates = templates_api.list_templates(account_id=self.account_id)
-        #     for template in templates.envelope_templates or []:
-        #         print(f"[DocuSign] available template template_id={template.template_id} "
-        #               f"name={template.name}")
-        # except ApiException as e:
-        #     body = getattr(e, "body", "") or ""
-        #     print("[DocuSign] failed to list templates")
-        #     print("[DocuSign] status:", e.status)
-        #     print("[DocuSign] reason:", e.reason)
-        #     print("[DocuSign] body:", body)
-        #     raise DocusignServiceError(f"Failed to list templates: {body}") from e
+
+        if not user.get("email_verified"):
+            raise DocusignServiceError(
+                "User email is not verified. Cannot create signing session."
+            )
 
         signer_name = self._get_signer_name(user)
         envelope_id = contract.get("envelope_id")
@@ -152,30 +151,21 @@ class DocusignService:
                 f"status={envelope_status}"
             )
 
-        if not envelope_id or envelope_status in TERMINAL_ENVELOPE_STATUSES:
+        if not envelope_id:
             template_id = self._get_template_id_for_role(user["role"])
-            print(
-                "[DocuSign] creating new envelope "
-                f"reason={'missing_envelope_id' if not envelope_id else envelope_status}"
-            )
+            print("[DocuSign] creating new envelope reason=no_envelope_id")
             print(
                 f"[DocuSign] envelope template selected role={user['role']} "
                 f"template_id={template_id}"
             )
+
             template_role = TemplateRole(
                 email=user["email"],
                 name=signer_name,
                 role_name="Client",
                 client_user_id=user["id"],
-                # tabs=Tabs(
-                #     text_tabs=[
-                #         Text(
-                #             tab_label="full_name",
-                #             value=signer_name,
-                #         )
-                #     ]
-                # ),
             )
+
             envelope_definition = EnvelopeDefinition(
                 template_id=template_id,
                 template_roles=[template_role],
@@ -200,18 +190,27 @@ class DocusignService:
 
             envelope_id = created_envelope.envelope_id
             envelope_status = (created_envelope.status or "").lower()
+
             print(
                 f"[DocuSign] new envelope created envelope_id={envelope_id} "
                 f"status={envelope_status}"
             )
+
             self.contract_repository.update_contract(
                 contract["id"],
                 ContractUpdateRequest(envelope_id=envelope_id),
             )
+
             print(
                 f"[DocuSign] contract updated contract_id={contract['id']} "
                 f"new_envelope_id={envelope_id}"
             )
+
+        elif envelope_status in TERMINAL_ENVELOPE_STATUSES:
+            raise DocusignServiceError(
+                f"Envelope {envelope_id} is already in terminal status '{envelope_status}'."
+            )
+
         elif envelope_status not in ACTIVE_ENVELOPE_STATUSES:
             print(
                 f"[DocuSign] unsupported envelope status envelope_id={envelope_id} "
@@ -220,6 +219,7 @@ class DocusignService:
             raise DocusignServiceError(
                 f"Envelope {envelope_id} has unsupported status '{envelope_status}'."
             )
+
         else:
             print(
                 f"[DocuSign] reusing active envelope envelope_id={envelope_id} "
@@ -230,6 +230,7 @@ class DocusignService:
             f"[DocuSign] creating recipient view envelope_id={envelope_id} "
             f"return_url={return_url}"
         )
+
         try:
             recipient_view = envelopes_api.create_recipient_view(
                 account_id=self.account_id,
@@ -252,6 +253,7 @@ class DocusignService:
             f"[DocuSign] recipient view created envelope_id={envelope_id} "
             f"url={recipient_view.url}"
         )
+
         return CreateSigningSessionResponse(
             contract_id=contract["id"],
             envelope_id=envelope_id,
@@ -294,12 +296,7 @@ class DocusignService:
             f"user_id={contract['user_id']} envelope_id={envelope_id}"
         )
 
-        self.contract_repository.update_contract(
-            contract["id"],
-            ContractUpdateRequest(
-                status="completed",
-            ),
-        )
+        self.contract_repository.mark_contract_completed(contract["id"])
         print(f"[DocuSign] contract marked completed contract_id={contract['id']}")
 
         self.user_repository.update_user_step(contract["user_id"], 1)

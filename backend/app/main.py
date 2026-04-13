@@ -18,7 +18,8 @@ app = FastAPI(
 # CORS configuration
 # -------------------------
 origins = [
-    settings.frontend_url
+    settings.frontend_url,
+    "https://episode-villain-cider.ngrok-free.dev"
 ]
 
 app.add_middleware(
