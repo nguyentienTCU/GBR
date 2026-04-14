@@ -1,9 +1,13 @@
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
 from app.core.supabase_client import get_service_supabase_client
 from app.schemas.quickbooks import QboConnection
+
+logger = logging.getLogger(__name__)
+LOG_PREFIX = "[QuickBooksRepository]"
 
 
 class QuickBooksRepository:
@@ -12,7 +16,7 @@ class QuickBooksRepository:
 
     def get_qbo_connection(self) -> QboConnection:
         result = (
-            self.supabase.table("qbo_connection")
+            self.supabase.table("quickbooks_cred")
             .select("*")
             .eq("id", 1)
             .single()
@@ -26,6 +30,14 @@ class QuickBooksRepository:
             )
 
         row: dict[str, Any] = result.data
+        logger.info(
+            "%s loaded connection table=quickbooks_cred id=%s realm_id=%s has_access_token=%s has_refresh_token=%s",
+            LOG_PREFIX,
+            row.get("id"),
+            row.get("realm_id"),
+            bool(row.get("access_token")),
+            bool(row.get("refresh_token")),
+        )
         expires_at = row.get("access_token_expires_at")
         if isinstance(expires_at, str):
             expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
@@ -46,8 +58,14 @@ class QuickBooksRepository:
         access_token: str,
         expires_at: datetime,
     ) -> None:
+        logger.info(
+            "%s saving connection table=quickbooks_cred id=1 realm_id=%s access_token_expires_at=%s",
+            LOG_PREFIX,
+            realm_id,
+            expires_at.isoformat(),
+        )
         (
-            self.supabase.table("qbo_connection")
+            self.supabase.table("quickbooks_cred")
             .update(
                 {
                     "realm_id": realm_id,

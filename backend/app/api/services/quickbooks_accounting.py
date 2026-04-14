@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import lru_cache
+import logging
 from typing import Any, Optional
 
 import httpx
+from httpx import DecodingError
 
 from app.api.repository.quickbooks import QuickBooksRepository
 from app.api.repository.transaction import TransactionRepository
+from app.api.repository.users import UserRepository
 from app.core.config import get_settings
 from app.schemas.quickbooks import (
     CreateInvoicePayload,
@@ -19,6 +22,8 @@ from app.schemas.transactions import TransactionUpdateRequest
 from app.api.services.quickbooks_token import QuickBooksTokenService
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+LOG_PREFIX = "[QuickBooksAccountingService]"
 
 
 class QuickBooksAccountingService:
@@ -26,9 +31,10 @@ class QuickBooksAccountingService:
         self,
     ) -> None:
         self.http_timeout = 30
-        self.api_base = "https://quickbooks.api.intuit.com"
+        self.api_base = "https://sandbox-quickbooks.api.intuit.com"
         self.token_service = QuickBooksTokenService()
         self.transaction_repo = TransactionRepository()
+        self.user_repo = UserRepository()
         self.quickbooks_repo = QuickBooksRepository()
 
     async def create_invoice(
@@ -44,6 +50,13 @@ class QuickBooksAccountingService:
             raise ValueError("Authenticated user is missing an id.")
 
         connection = self.quickbooks_repo.get_qbo_connection()
+        logger.info(
+            "%s starting invoice creation user_id=%s realm_id=%s amount=%s",
+            LOG_PREFIX,
+            user_id,
+            connection.realm_id,
+            payload.amount,
+        )
         customer_payload = self._build_customer_payload(current_user)
 
         try:
@@ -56,6 +69,10 @@ class QuickBooksAccountingService:
                 raise QuickBooksApiError(
                     f"QuickBooks customer response missing Id: {customer}"
                 )
+            self.user_repo.update_user_qbo_customer_id(
+                user_id=user_id,
+                qbo_customer_id=customer_id,
+            )
 
             self.transaction_repo.update_latest_transaction_by_user_id(
                 user_id,
@@ -77,6 +94,7 @@ class QuickBooksAccountingService:
                 )
 
             body: dict[str, Any] = {
+                "BillEmail": { "Address": current_user.email },
                 "CustomerRef": {"value": customer_id},
                 "Line": [
                     {
@@ -88,6 +106,9 @@ class QuickBooksAccountingService:
                         },
                     }
                 ],
+                "AllowOnlinePayment": True,
+                "AllowOnlineCreditCardPayment": True,
+                "AllowOnlineACHPayment": True,
             }
 
             if payload.txn_date:
@@ -111,6 +132,19 @@ class QuickBooksAccountingService:
                 raise QuickBooksApiError(
                     f"QuickBooks invoice response missing Id: {invoice_response}"
                 )
+            bill_email = current_user.email
+            send_result = await self._send_invoice_email(
+                connection=connection,
+                invoice_id=invoice_id,
+            )
+            logger.info(
+                "%s invoice created user_id=%s realm_id=%s invoice_id=%s emailed=%s",
+                LOG_PREFIX,
+                user_id,
+                connection.realm_id,
+                invoice_id,
+                True,
+            )
 
             self.transaction_repo.update_latest_transaction_by_user_id(
                 user_id,
@@ -121,13 +155,24 @@ class QuickBooksAccountingService:
                     status="pending",
                 ),
             )
+            self.user_repo.update_user_step(user_id, 2)
 
             return {
                 "customer_id": customer_id,
                 "invoice_id": invoice_id,
+                "bill_email": bill_email,
+                "email_sent": True,
+                "send_result": send_result,
                 "invoice": invoice_response,
             }
         except Exception:
+            logger.exception(
+                "%s invoice creation failed user_id=%s realm_id=%s amount=%s",
+                LOG_PREFIX,
+                user_id,
+                connection.realm_id,
+                payload.amount,
+            )
             self.transaction_repo.update_latest_transaction_by_user_id(
                 user_id,
                 TransactionUpdateRequest(
@@ -148,6 +193,24 @@ class QuickBooksAccountingService:
             params={"minorversion": "75"},
         )
         return invoice_response.get("Invoice", invoice_response)
+
+    async def _send_invoice_email(
+        self,
+        connection: QboConnection,
+        invoice_id: str,
+    ) -> dict[str, Any]:
+        send_response = await self._qbo_post_without_body(
+            connection=connection,
+            path=f"/v3/company/{connection.realm_id}/invoice/{invoice_id}/send",
+            params={"minorversion": "75"},
+        )
+        logger.info(
+            "%s invoice email sent realm_id=%s invoice_id=%s",
+            LOG_PREFIX,
+            connection.realm_id,
+            invoice_id,
+        )
+        return send_response
 
     async def sync_transaction_status_by_invoice_id(
         self,
@@ -345,15 +408,28 @@ class QuickBooksAccountingService:
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/json",
             "Content-Type": "application/text",
+            "Accept-Encoding": "identity",
         }
 
         url = f"{self.api_base}/v3/company/{connection.realm_id}/query"
         params = {"minorversion": "75"}
 
-        async with httpx.AsyncClient(timeout=self.http_timeout) as client:
-            response = await client.post(url, headers=headers, params=params, content=query)
+        try:
+            async with httpx.AsyncClient(timeout=self.http_timeout) as client:
+                response = await client.post(url, headers=headers, params=params, content=query)
+        except DecodingError as exc:
+            logger.error(
+                "%s response decode failure method=POST realm_id=%s url=%s error=%s",
+                LOG_PREFIX,
+                connection.realm_id,
+                url,
+                str(exc),
+            )
+            raise QuickBooksApiError(
+                f"QuickBooks response decode failure on POST {url}: {exc}"
+            ) from exc
 
-        return self._handle_qbo_response(response)
+        return self._handle_qbo_response(response, "POST", url, connection.realm_id)
 
     async def _qbo_get(
         self,
@@ -366,13 +442,26 @@ class QuickBooksAccountingService:
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/json",
+            "Accept-Encoding": "identity",
         }
         url = f"{self.api_base}{path}"
 
-        async with httpx.AsyncClient(timeout=self.http_timeout) as client:
-            response = await client.get(url, headers=headers, params=params)
+        try:
+            async with httpx.AsyncClient(timeout=self.http_timeout) as client:
+                response = await client.get(url, headers=headers, params=params)
+        except DecodingError as exc:
+            logger.error(
+                "%s response decode failure method=GET realm_id=%s url=%s error=%s",
+                LOG_PREFIX,
+                connection.realm_id,
+                url,
+                str(exc),
+            )
+            raise QuickBooksApiError(
+                f"QuickBooks response decode failure on GET {url}: {exc}"
+            ) from exc
 
-        return self._handle_qbo_response(response)
+        return self._handle_qbo_response(response, "GET", url, connection.realm_id)
 
     async def _qbo_post(
         self,
@@ -387,17 +476,76 @@ class QuickBooksAccountingService:
             "Authorization": f"Bearer {access_token}",
             "Accept": "application/json",
             "Content-Type": "application/json",
+            "Accept-Encoding": "identity",
         }
         url = f"{self.api_base}{path}"
 
-        async with httpx.AsyncClient(timeout=self.http_timeout) as client:
-            response = await client.post(url, headers=headers, params=params, json=json_body)
+        try:
+            async with httpx.AsyncClient(timeout=self.http_timeout) as client:
+                response = await client.post(url, headers=headers, params=params, json=json_body)
+        except DecodingError as exc:
+            logger.error(
+                "%s response decode failure method=POST realm_id=%s url=%s error=%s",
+                LOG_PREFIX,
+                connection.realm_id,
+                url,
+                str(exc),
+            )
+            raise QuickBooksApiError(
+                f"QuickBooks response decode failure on POST {url}: {exc}"
+            ) from exc
 
-        return self._handle_qbo_response(response)
+        return self._handle_qbo_response(response, "POST", url, connection.realm_id)
+
+    async def _qbo_post_without_body(
+        self,
+        connection,
+        path: str,
+        params: Optional[dict[str, str]] = None,
+    ) -> dict[str, Any]:
+        access_token = await self.token_service.get_access_token(connection)
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+            "Accept-Encoding": "identity",
+        }
+        url = f"{self.api_base}{path}"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.http_timeout) as client:
+                response = await client.post(url, headers=headers, params=params)
+        except DecodingError as exc:
+            logger.error(
+                "%s response decode failure method=POST realm_id=%s url=%s error=%s",
+                LOG_PREFIX,
+                connection.realm_id,
+                url,
+                str(exc),
+            )
+            raise QuickBooksApiError(
+                f"QuickBooks response decode failure on POST {url}: {exc}"
+            ) from exc
+
+        return self._handle_qbo_response(response, "POST", url, connection.realm_id)
 
     @staticmethod
-    def _handle_qbo_response(response: httpx.Response) -> dict[str, Any]:
+    def _handle_qbo_response(
+        response: httpx.Response,
+        method: str,
+        url: str,
+        realm_id: str,
+    ) -> dict[str, Any]:
         if response.status_code >= 400:
+            logger.error(
+                "%s response error method=%s realm_id=%s url=%s status=%s body=%s",
+                LOG_PREFIX,
+                method,
+                realm_id,
+                url,
+                response.status_code,
+                response.text[:1000],
+            )
             raise QuickBooksApiError(
                 f"QuickBooks API error {response.status_code}: {response.text}"
             )
@@ -405,6 +553,15 @@ class QuickBooksAccountingService:
         try:
             return response.json()
         except ValueError as exc:
+            logger.error(
+                "%s returned non-JSON response method=%s realm_id=%s url=%s status=%s body=%s",
+                LOG_PREFIX,
+                method,
+                realm_id,
+                url,
+                response.status_code,
+                response.text[:1000],
+            )
             raise QuickBooksApiError(
                 f"QuickBooks returned non-JSON response: {response.text}"
             ) from exc

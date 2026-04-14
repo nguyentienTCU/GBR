@@ -4,9 +4,11 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import users, docusign, quickbooks
 from app.core.config import get_settings
+from app.core.logging_config import configure_logging
 
 # load settings (cached)
 settings = get_settings()
+configure_logging()
 
 # create app
 app = FastAPI(

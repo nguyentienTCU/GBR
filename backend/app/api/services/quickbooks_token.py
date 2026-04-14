@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import logging
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Any, Optional
@@ -12,6 +13,8 @@ from app.core.config import get_settings
 from app.schemas.quickbooks import QboConnection, QuickBooksAuthError
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+LOG_PREFIX = "[QuickBooksTokenService]"
 
 
 class QuickBooksTokenService:
@@ -28,18 +31,32 @@ class QuickBooksTokenService:
 
     async def get_access_token(self, connection: QboConnection) -> str:
         if self._is_access_token_valid(connection):
+            logger.info(
+                "%s using cached access token realm_id=%s expires_at=%s",
+                LOG_PREFIX,
+                connection.realm_id,
+                connection.access_token_expires_at.isoformat() if connection.access_token_expires_at else None,
+            )
             assert connection.access_token is not None
             return connection.access_token
 
         if not connection.refresh_token:
             raise QuickBooksAuthError("Missing QuickBooks refresh token.")
 
+        logger.info("%s refreshing access token realm_id=%s", LOG_PREFIX, connection.realm_id)
         token_data = await self._refresh_tokens(connection.refresh_token)
 
         connection.access_token = token_data["access_token"]
         connection.refresh_token = token_data.get("refresh_token", connection.refresh_token)
         connection.access_token_expires_at = self._build_expiry(
             int(token_data["expires_in"])
+        )
+        logger.info(
+            "%s refreshed access token realm_id=%s new_expires_at=%s refresh_token_rotated=%s",
+            LOG_PREFIX,
+            connection.realm_id,
+            connection.access_token_expires_at.isoformat(),
+            "refresh_token" in token_data,
         )
 
         self.quickbooks_repo.save_qbo_connection(
