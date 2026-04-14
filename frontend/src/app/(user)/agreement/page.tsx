@@ -123,7 +123,7 @@ export default function AgreementPage() {
           "We’re still finalizing your signed agreement. Please wait a moment and refresh the page if needed.",
         );
       }
-    }, 2000);
+    }, 1000);
 
     return () => window.clearInterval(intervalId);
   }, [isPollingStep, refreshCurrentStep]);
@@ -164,7 +164,7 @@ export default function AgreementPage() {
         </div>
       </div>
 
-      <section className="mx-auto w-full max-w-5xl px-5 py-8 sm:px-6 lg:px-10 lg:py-9">
+      <section className="mx-auto w-full max-w-5xl px-5 py-8 sm:px-6 lg:px-10 lg:py-7">
         <div className="mb-6 flex items-center gap-3 border-b border-[#E0E7F0] pb-5">
           <Link
             href="/dashboard"
@@ -181,8 +181,8 @@ export default function AgreementPage() {
         <div className="overflow-hidden rounded-[26px] border border-[#DFE6F0] bg-white shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
           <div className="bg-[#FBFCFE] px-4 py-5 sm:px-5">
             {isAgreementComplete ? (
-              <div className="rounded-[22px] border border-[#E7D3A1] bg-[linear-gradient(135deg,_#FFFDF7_0%,_#FFF7E4_100%)] p-6 sm:p-8">
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+              <div className="rounded-[22px] border border-[#E7D3A1] bg-[linear-gradient(135deg,_#FFFDF7_0%,_#FFF7E4_100%)] p-5 sm:p-6">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch lg:justify-between">
                   <div className="flex items-start gap-4">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#0B1630] text-[#F5E6B8] shadow-[0_14px_30px_rgba(11,22,48,0.16)]">
                       <CheckCircle2 className="h-7 w-7" strokeWidth={1.9} />
@@ -191,32 +191,32 @@ export default function AgreementPage() {
                       <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#B8851C]">
                         Step 1 Complete
                       </p>
-                      <h2 className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-[#14213D]">
+                      <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-[#14213D] sm:text-[1.9rem]">
                         Your agreement has already been signed
                       </h2>
-                      <p className="mt-3 max-w-2xl text-base leading-7 text-[#5F6F89]">
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6B7C97] sm:text-[0.95rem]">
                         We have your completed buyer representation agreement on
                         file. You do not need to sign again from this page.
                       </p>
                     </div>
                   </div>
 
-                  <div className="rounded-[20px] border border-white/70 bg-white/70 p-5 shadow-[0_12px_28px_rgba(20,33,61,0.06)] backdrop-blur">
+                  <div className="rounded-[22px] border border-[#F0D79A] bg-white px-6 py-6 shadow-[0_16px_34px_rgba(20,33,61,0.10)]">
                     <div className="flex items-center gap-3">
                       <ShieldCheck
-                        className="h-5 w-5 text-[#B8851C]"
+                        className="h-6 w-6 text-[#B8851C]"
                         strokeWidth={2}
                       />
-                      <p className="text-sm font-semibold text-[#223250]">
+                      <p className="text-base font-semibold text-[#223250] sm:text-lg">
                         Next step unlocked
                       </p>
                     </div>
-                    <p className="mt-3 max-w-sm text-sm leading-6 text-[#62738E]">
+                    <p className="mt-3 max-w-sm text-base leading-7 text-[#4E617D]">
                       Continue to the deposit fee workflow when you are ready.
                     </p>
                     <Button
                       type="button"
-                      className="mt-4 h-12 rounded-2xl px-5"
+                      className="mt-5 h-14 rounded-2xl px-7 text-base sm:text-lg"
                       onClick={() => router.push(USER_STEP_ROUTES.depositFees)}
                     >
                       Go To Deposit Fee

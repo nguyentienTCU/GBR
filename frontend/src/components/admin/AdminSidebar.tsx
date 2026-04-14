@@ -111,7 +111,7 @@ export default function AdminSidebar() {
   const displayName = displayNameFromUser(authUser);
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-b border-[#151d2e] bg-[#0a1120] text-white lg:w-64 lg:border-b-0 lg:border-r lg:border-[#151d2e]">
+    <aside className="flex w-full shrink-0 flex-col border-b border-[#151d2e] bg-[#0a1120] text-white lg:sticky lg:top-0 lg:h-dvh lg:w-64 lg:border-b-0 lg:border-r lg:border-[#151d2e]">
       <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
       <ChangePasswordModal
         open={changePasswordOpen}
@@ -119,7 +119,7 @@ export default function AdminSidebar() {
       />
 
 
-      <div className="flex min-h-0 flex-1 flex-col lg:min-h-dvh">
+      <div className="flex min-h-0 flex-1 flex-col lg:h-dvh">
         <div className="border-b border-[#151d2e] px-5 py-6">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0d1528] ring-1 ring-[#C9A65B]/35">

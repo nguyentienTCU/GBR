@@ -1,13 +1,65 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, CircleDollarSign, UserCircle2 } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CircleDollarSign,
+  UserCircle2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Notification } from "@/components/ui/Notification";
+import { useRouteProgress } from "@/contexts/RouteProgressContext";
+import { createInvoice } from "@/service/quickbooks.service";
+
+const DEPOSIT_FEE_AMOUNT = 5000;
 
 export default function DepositFeesPage() {
+  const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+  const [billEmail, setBillEmail] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const routeProgress = useRouteProgress();
+
+  async function handleCreateInvoice() {
+    try {
+      setIsCreatingInvoice(true);
+      setErrorMessage("");
+      routeProgress.start({ minDurationMs: 1100 });
+
+      const response = await createInvoice({
+        amount: DEPOSIT_FEE_AMOUNT,
+        customer_memo: "Initial deposit fee invoice",
+        private_note: "Created from the deposit fee onboarding page.",
+      });
+
+      setBillEmail(response.bill_email);
+      setNotificationOpen(true);
+      setIsCreatingInvoice(false);
+      routeProgress.complete();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to create the QuickBooks invoice.",
+      );
+      setIsCreatingInvoice(false);
+      routeProgress.fail();
+    }
+  }
+
   return (
-    <div className="min-h-dvh bg-[radial-gradient(circle_at_top_right,_rgba(201,166,91,0.08),_transparent_22%),linear-gradient(180deg,_#F8FAFD_0%,_#F4F7FB_100%)]">
+    <div className="flex flex-1 flex-col bg-[radial-gradient(circle_at_top_right,_rgba(201,166,91,0.08),_transparent_22%),linear-gradient(180deg,_#F8FAFD_0%,_#F4F7FB_100%)]">
+      <Notification
+        open={notificationOpen}
+        onClose={() => setNotificationOpen(false)}
+        variant="success"
+        title="Payment Email Sent"
+        message={`Your QuickBooks invoice has been created and emailed${billEmail ? ` to ${billEmail}` : ""}. Please check your inbox for the payment link.`}
+      />
+
       <div className="border-b border-[#DDE5F0] bg-white/92 px-5 py-3 shadow-[0_2px_14px_rgba(10,17,32,0.05)] backdrop-blur sm:px-6 lg:px-10">
         <div className="flex items-center justify-end">
           <button
@@ -48,21 +100,55 @@ export default function DepositFeesPage() {
                 Retainer payment is now available
               </h2>
               <p className="mt-3 max-w-2xl text-base leading-7 text-[#657793]">
-                Your agreement has been completed successfully. This page is now
-                unlocked for the deposit fee workflow.
+                Your agreement has been completed successfully. Send your
+                $5,000 QuickBooks deposit invoice email from this page to continue the
+                payment workflow.
               </p>
             </div>
           </div>
 
           <div className="mt-8 rounded-[22px] border border-dashed border-[#D8E0EC] bg-[#F8FAFD] p-6">
             <p className="text-base leading-7 text-[#5D6F8B]">
-              Payment collection UI has not been implemented in this screen yet.
-              The route is now available for step-2 users so onboarding can
-              continue cleanly from the agreement flow.
+              This screen creates the QuickBooks invoice for the logged-in user
+              and immediately asks QuickBooks to send the invoice email to the
+              billing email on file.
             </p>
-            <Button className="mt-5 h-12 rounded-2xl px-5">
-              Payment Flow Coming Next
-            </Button>
+
+            <div className="mt-5 flex flex-wrap items-center gap-4">
+              <Button
+                type="button"
+                disabled={isCreatingInvoice}
+                onClick={() => void handleCreateInvoice()}
+                className="h-12 rounded-2xl px-5"
+              >
+                {isCreatingInvoice ? "Sending Payment Email..." : "Send Payment Email"}
+              </Button>
+            </div>
+
+            {errorMessage ? (
+              <div className="mt-4 rounded-[18px] border border-red-200 bg-red-50 px-4 py-3">
+                <p className="text-sm font-medium text-[#B42318]">
+                  {errorMessage}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-6 rounded-[22px] border border-[#E7ECF3] bg-white p-6">
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#B8851C]">
+              Invoice Summary
+            </p>
+            <div className="mt-3 flex items-center justify-between gap-4">
+              <p className="text-base text-[#5D6F8B]">Deposit fee amount</p>
+              <p className="text-2xl font-semibold tracking-[-0.03em] text-[#14213D]">
+                $5,000
+              </p>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-[#7A879C]">
+              Clicking Send Payment Email creates the QuickBooks invoice and
+              asks QuickBooks to email it to the billing address. Webhooks still
+              sync the transaction record using the stored QuickBooks invoice ID.
+            </p>
           </div>
         </div>
       </section>

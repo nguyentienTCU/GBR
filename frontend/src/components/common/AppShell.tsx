@@ -91,7 +91,7 @@ function UserAppFrame({
   return (
     <>
       <UserSidebar />
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-dvh">
         {isLoading ? (
           <AppLoadingScreen
             title="Loading your progress"
@@ -100,9 +100,10 @@ function UserAppFrame({
             fullScreen
           />
         ) : (
-          children
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
         )}
-      </main>
+        <Footer />
+      </div>
     </>
   );
 }
@@ -276,7 +277,7 @@ export default function AppShell({ children }: AppShellProps) {
   return (
     <>
       <div className="flex min-h-dvh flex-col bg-[#F8F9FB] text-[#111827]">
-        <div className="flex min-h-dvh flex-1 flex-col items-stretch lg:flex-row">
+        <div className="flex min-h-0 flex-1 flex-col items-stretch lg:min-h-dvh lg:flex-row">
           {showAdminSidebar && <AdminSidebar />}
 
           {showUserSidebar && (
@@ -287,9 +288,12 @@ export default function AppShell({ children }: AppShellProps) {
           )}
 
           {!showUserSidebar && (
-            <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-              {children}
-            </main>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:min-h-dvh">
+              <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+                {children}
+              </main>
+              <Footer />
+            </div>
           )}
         </div>
       </div>
