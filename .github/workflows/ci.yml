@@ -32,24 +32,36 @@ jobs:
 
       - name: Import FastAPI application
         env:
-          SUPABASE_URL: https://example.supabase.co
-          SUPABASE_ANON_KEY: test-anon-key
-          SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
-          DOCUSIGN_INTEGRATION_KEY: test-docusign-integration-key
-          DOCUSIGN_USER_ID: test-docusign-user-id
-          DOCUSIGN_ACCOUNT_ID: test-docusign-account-id
+          SUPABASE_URL: https://your-project.supabase.co
+          SUPABASE_ANON_KEY: your-supabase-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: your-supabase-service-role-key
+          DOCUSIGN_INTEGRATION_KEY: your-docusign-integration-key
+          DOCUSIGN_USER_ID: your-docusign-user-id
+          DOCUSIGN_ACCOUNT_ID: your-docusign-account-id
           DOCUSIGN_BASE_PATH: https://demo.docusign.net/restapi
           DOCUSIGN_AUTH_SERVER: account-d.docusign.com
-          DOCUSIGN_PRIVATE_KEY_PATH: ./test-docusign-private.key
-          DOCUSIGN_REDIRECT_URI: https://example.com/docusign/callback
+          DOCUSIGN_PRIVATE_KEY_PATH: /path/to/docusign_private_key.pem
+          DOCUSIGN_OAUTH_BASE_PATH: account-d.docusign.com
+          DOCUSIGN_REDIRECT_URI: http://localhost:8000/docusign/callback
           SMTP_HOST: smtp.example.com
           SMTP_PORT: 587
-          SMTP_USERNAME: test-user
-          SMTP_PASSWORD: test-password
+          SMTP_USERNAME: your-smtp-username
+          SMTP_PASSWORD: your-smtp-password
           SMTP_FROM_EMAIL: no-reply@example.com
-          FRONTEND_URL: http://localhost:3000/*
-          DOCUSIGN_BUYER_TEMPLATE_ID: 123456789
-          DOCUSIGN_SELLER_TEMPLATE_ID: 123456789
+          FRONTEND_URL: http://localhost:3000
+          DOCUSIGN_BUYER_TEMPLATE_ID: your-buyer-template-id
+          DOCUSIGN_SELLER_TEMPLATE_ID: your-seller-template-id
+          QBO_CLIENT_ID: your-qbo-client-id
+          QBO_CLIENT_SECRET: your-qbo-client-secret
+          QBO_REDIRECT_URI: http://localhost:8000/quickbooks/callback
+          QBO_SCOPES: com.intuit.quickbooks.accounting
+          QBO_ENV: sandbox
+          QBO_REALM_ID: your-qbo-realm-id
+          QBO_AUTH_BASE: https://appcenter.intuit.com/connect/oauth2
+          QBO_TOKEN_URL: https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer
+          QBO_BASE_URL: https://sandbox-quickbooks.api.intuit.com/v3
+          QBO_INCOME_ACCOUNT_ID: your-qbo-income-account-id
+          QBO_WEBHOOK_VERIFIER_TOKEN: your-qbo-webhook-verifier-token
         run: python -c "from app.main import app; print(app.title)"
 
   frontend:

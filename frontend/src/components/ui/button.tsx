@@ -26,12 +26,13 @@ const variantClassNames = {
 export type ButtonVariant = keyof typeof variantClassNames;
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  asChild?: boolean;
   variant?: ButtonVariant;
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   function Button(
-    { className = "", variant = "primary", type = "button", ...props },
+    { asChild: _asChild, className = "", variant = "primary", type = "button", ...props },
     ref,
   ) {
     return (

@@ -125,6 +125,37 @@ class UserRepository:
 
         return result.user
 
+    def update_user_qbo_customer_id(
+        self,
+        user_id: str,
+        qbo_customer_id: str,
+    ) -> dict[str, Any]:
+        """
+        Update the user's QuickBooks customer ID on the profile row.
+        """
+        self.get_user_profile_by_id(user_id)
+
+        try:
+            result = (
+                self.supabase.table("user")
+                .update({"qbo_customer_id": qbo_customer_id})
+                .eq("id", user_id)
+                .execute()
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to update user qbo_customer_id: {str(exc)}",
+            ) from exc
+
+        if not result.data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to update user qbo_customer_id",
+            )
+
+        return result.data[0]
+
 
     def mark_password_changed(
         self,

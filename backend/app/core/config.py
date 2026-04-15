@@ -22,6 +22,18 @@ class Settings(BaseSettings):
     docusign_redirect_uri: str
     docusign_buyer_template_id: str
     docusign_seller_template_id: str
+    
+    # Quickbooks
+    qbo_scopes: str
+    qbo_auth_base: str
+    qbo_token_url: str
+    qbo_base_url: str
+    qbo_client_id: str
+    qbo_redirect_uri: str
+    qbo_client_secret: str
+    qbo_income_account_id: str
+    qbo_webhook_verifier_token: str
+    qbo_webhook_verifier_token: str
 
     # Email
     smtp_host: str

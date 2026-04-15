@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import logging
 from typing import Any
 
 from docusign_esign import (
@@ -29,6 +30,8 @@ from app.api.repository.contracts import ContractRepository
 from app.api.repository.users import UserRepository
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+LOG_PREFIX = "[DocuSignService]"
 
 ACTIVE_ENVELOPE_STATUSES = {
     "created",
@@ -104,7 +107,7 @@ class DocusignService:
         return_url: str,
     ) -> CreateSigningSessionResponse:
         """Reuse the user's existing contract row and create/reuse a DocuSign envelope."""
-        print(f"[DocuSign] create_signing_session start user_id={user_id}")
+        logger.info("%s create_signing_session start user_id=%s", LOG_PREFIX, user_id)
 
         api_client = self.create_api_client()
         envelopes_api = EnvelopesApi(api_client)
@@ -116,9 +119,11 @@ class DocusignService:
                 "Please verify the account first or contact support."
             )
 
-        print(
-            f"[DocuSign] contract loaded contract_id={contract['id']} "
-            f"stored_envelope_id={contract.get('envelope_id')}"
+        logger.info(
+            "%s contract loaded contract_id=%s stored_envelope_id=%s",
+            LOG_PREFIX,
+            contract["id"],
+            contract.get("envelope_id"),
         )
 
         user = self.user_repository.get_user_profile_by_id(user_id)
@@ -133,7 +138,7 @@ class DocusignService:
         envelope_status = ""
 
         if envelope_id:
-            print(f"[DocuSign] fetching existing envelope envelope_id={envelope_id}")
+            logger.info("%s fetching existing envelope envelope_id=%s", LOG_PREFIX, envelope_id)
             try:
                 envelope = envelopes_api.get_envelope(
                     account_id=self.account_id,
@@ -146,17 +151,21 @@ class DocusignService:
                 ) from e
 
             envelope_status = (envelope.status or "").lower()
-            print(
-                f"[DocuSign] existing envelope loaded envelope_id={envelope_id} "
-                f"status={envelope_status}"
+            logger.info(
+                "%s existing envelope loaded envelope_id=%s status=%s",
+                LOG_PREFIX,
+                envelope_id,
+                envelope_status,
             )
 
         if not envelope_id:
             template_id = self._get_template_id_for_role(user["role"])
-            print("[DocuSign] creating new envelope reason=no_envelope_id")
-            print(
-                f"[DocuSign] envelope template selected role={user['role']} "
-                f"template_id={template_id}"
+            logger.info("%s creating new envelope reason=no_envelope_id", LOG_PREFIX)
+            logger.info(
+                "%s envelope template selected role=%s template_id=%s",
+                LOG_PREFIX,
+                user["role"],
+                template_id,
             )
 
             template_role = TemplateRole(
@@ -172,28 +181,33 @@ class DocusignService:
                 status="sent",
             )
 
-            print("[DocuSign] creating envelope with template_id:", template_id)
+            logger.info("%s creating envelope template_id=%s", LOG_PREFIX, template_id)
             try:
                 created_envelope = envelopes_api.create_envelope(
                     account_id=self.account_id,
                     envelope_definition=envelope_definition,
                 )
             except ApiException as e:
-                print("[DocuSign] create_envelope failed")
-                print("[DocuSign] status:", e.status)
-                print("[DocuSign] reason:", e.reason)
-                print("[DocuSign] body:", e.body)
-                print("[DocuSign] template_id:", repr(template_id))
-                print("[DocuSign] role_name:", repr("Client"))
-                print("[DocuSign] account_id:", repr(self.account_id))
+                logger.error(
+                    "%s create_envelope failed status=%s reason=%s body=%s template_id=%r role_name=%r account_id=%r",
+                    LOG_PREFIX,
+                    e.status,
+                    e.reason,
+                    e.body,
+                    template_id,
+                    "Client",
+                    self.account_id,
+                )
                 raise DocusignServiceError(f"Failed to create envelope: {e.body}") from e
 
             envelope_id = created_envelope.envelope_id
             envelope_status = (created_envelope.status or "").lower()
 
-            print(
-                f"[DocuSign] new envelope created envelope_id={envelope_id} "
-                f"status={envelope_status}"
+            logger.info(
+                "%s new envelope created envelope_id=%s status=%s",
+                LOG_PREFIX,
+                envelope_id,
+                envelope_status,
             )
 
             self.contract_repository.update_contract(
@@ -201,9 +215,11 @@ class DocusignService:
                 ContractUpdateRequest(envelope_id=envelope_id),
             )
 
-            print(
-                f"[DocuSign] contract updated contract_id={contract['id']} "
-                f"new_envelope_id={envelope_id}"
+            logger.info(
+                "%s contract updated contract_id=%s new_envelope_id=%s",
+                LOG_PREFIX,
+                contract["id"],
+                envelope_id,
             )
 
         elif envelope_status in TERMINAL_ENVELOPE_STATUSES:
@@ -212,23 +228,29 @@ class DocusignService:
             )
 
         elif envelope_status not in ACTIVE_ENVELOPE_STATUSES:
-            print(
-                f"[DocuSign] unsupported envelope status envelope_id={envelope_id} "
-                f"status={envelope_status}"
+            logger.info(
+                "%s unsupported envelope status envelope_id=%s status=%s",
+                LOG_PREFIX,
+                envelope_id,
+                envelope_status,
             )
             raise DocusignServiceError(
                 f"Envelope {envelope_id} has unsupported status '{envelope_status}'."
             )
 
         else:
-            print(
-                f"[DocuSign] reusing active envelope envelope_id={envelope_id} "
-                f"status={envelope_status}"
+            logger.info(
+                "%s reusing active envelope envelope_id=%s status=%s",
+                LOG_PREFIX,
+                envelope_id,
+                envelope_status,
             )
 
-        print(
-            f"[DocuSign] creating recipient view envelope_id={envelope_id} "
-            f"return_url={return_url}"
+        logger.info(
+            "%s creating recipient view envelope_id=%s return_url=%s",
+            LOG_PREFIX,
+            envelope_id,
+            return_url,
         )
 
         try:
@@ -249,9 +271,11 @@ class DocusignService:
                 f"Failed to create recipient view: {body}"
             ) from e
 
-        print(
-            f"[DocuSign] recipient view created envelope_id={envelope_id} "
-            f"url={recipient_view.url}"
+        logger.info(
+            "%s recipient view created envelope_id=%s url=%s",
+            LOG_PREFIX,
+            envelope_id,
+            recipient_view.url,
         )
 
         return CreateSigningSessionResponse(
@@ -267,10 +291,15 @@ class DocusignService:
         envelope_id = data.get("envelopeId")
         account_id = data.get("accountId")
 
-        print(f"[DocuSign] process_connect_event event={event} envelope_id={envelope_id}")
+        logger.info(
+            "%s process_connect_event event=%s envelope_id=%s",
+            LOG_PREFIX,
+            event,
+            envelope_id,
+        )
 
         if event != "envelope-completed":
-            print(f"[Docusign] ignoring event={event}")
+            logger.info("%s ignoring event=%s", LOG_PREFIX, event)
             return
 
         if not envelope_id:
@@ -291,18 +320,22 @@ class DocusignService:
                 f"No contract found for envelope_id={envelope_id}."
             )
 
-        print(
-            f"[DocuSign] matched contract contract_id={contract['id']} "
-            f"user_id={contract['user_id']} envelope_id={envelope_id}"
+        logger.info(
+            "%s matched contract contract_id=%s user_id=%s envelope_id=%s",
+            LOG_PREFIX,
+            contract["id"],
+            contract["user_id"],
+            envelope_id,
         )
 
         self.contract_repository.mark_contract_completed(contract["id"])
-        print(f"[DocuSign] contract marked completed contract_id={contract['id']}")
+        logger.info("%s contract marked completed contract_id=%s", LOG_PREFIX, contract["id"])
 
         self.user_repository.update_user_step(contract["user_id"], 1)
-        print(
-            f"[DocuSign] user advanced to payment step "
-            f"user_id={contract['user_id']}"
+        logger.info(
+            "%s user advanced to payment step user_id=%s",
+            LOG_PREFIX,
+            contract["user_id"],
         )
 
 
