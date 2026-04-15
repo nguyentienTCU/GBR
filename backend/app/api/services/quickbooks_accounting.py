@@ -60,15 +60,12 @@ class QuickBooksAccountingService:
         customer_payload = self._build_customer_payload(current_user)
 
         try:
-            customer = await self._get_or_create_customer(
-                connection=connection,
-                payload=customer_payload,
-            )
-            customer_id = customer.get("Id")
+            # Create a QBO customer if we don't already have a customer_id for this user. We need a customer to create an invoice.
+            customer = await self.transaction_repo.get_latest_transaction_by_user_id(user_id)
+            customer_id = customer.get("qbo_customer_id")
             if not customer_id:
-                raise QuickBooksApiError(
-                    f"QuickBooks customer response missing Id: {customer}"
-                )
+                customer_id =  await self._create_customer(connection=connection, payload=payload).get("Id"); 
+
             self.user_repo.update_user_qbo_customer_id(
                 user_id=user_id,
                 qbo_customer_id=customer_id,
@@ -83,10 +80,22 @@ class QuickBooksAccountingService:
                 ),
             )
 
-            service_item = await self._get_or_create_service_item(
+            # Get or create the service item for the invoice line. This is a sellable item in QBO that represents the service we're charging for.
+            existing = await self._get_item_by_name(
                 connection=connection,
-                item_name="Brokerage Service Fee",
+                item_name=item_name,
             )
+            if existing:
+                return existing
+
+            service_item = await self._create_service_item(
+                connection=connection,
+                item_name=item_name,
+                income_account_id=settings.qbo_income_account_id,
+                description=description,
+                unit_price=unit_price,
+            )
+            
             service_item_id = service_item.get("Id")
             if not service_item_id:
                 raise QuickBooksApiError(
@@ -231,63 +240,6 @@ class QuickBooksAccountingService:
             update_payload,
         )
 
-    async def _get_customer_by_id(
-        self,
-        connection: QboConnection,
-        customer_id: str,
-    ) -> dict[str, Any]:
-        return await self._qbo_get(
-            connection=connection,
-            path=f"/v3/company/{connection.realm_id}/customer/{customer_id}",
-            params={"minorversion": "75"},
-        )
-
-    async def _get_customer_by_display_name(
-        self,
-        connection: QboConnection,
-        display_name: str,
-    ) -> Optional[dict[str, Any]]:
-        escaped = self._escape_qbo_query_literal(display_name)
-        query = f"SELECT * FROM Customer WHERE DisplayName = '{escaped}'"
-
-        data = await self._qbo_query(connection=connection, query=query)
-        customers = data.get("QueryResponse", {}).get("Customer", [])
-        return customers[0] if customers else None
-
-    async def _get_customer_by_email(
-        self,
-        connection: QboConnection,
-        email: str,
-    ) -> Optional[dict[str, Any]]:
-        escaped = self._escape_qbo_query_literal(email)
-        query = f"SELECT * FROM Customer WHERE PrimaryEmailAddr = '{escaped}'"
-
-        data = await self._qbo_query(connection=connection, query=query)
-        customers = data.get("QueryResponse", {}).get("Customer", [])
-        return customers[0] if customers else None
-
-    async def _get_or_create_customer(
-        self,
-        connection: QboConnection,
-        payload: QuickBooksCustomer,
-    ) -> dict[str, Any]:
-        if payload.primary_email:
-            existing_by_email = await self._get_customer_by_email(
-                connection=connection,
-                email=payload.primary_email,
-            )
-            if existing_by_email:
-                return existing_by_email
-
-        existing_by_name = await self._get_customer_by_display_name(
-            connection=connection,
-            display_name=payload.display_name,
-        )
-        if existing_by_name:
-            return existing_by_name
-
-        return await self._create_customer(connection=connection, payload=payload)
-
     async def _get_item_by_name(
         self,
         connection: QboConnection,
@@ -299,8 +251,6 @@ class QuickBooksAccountingService:
         data = await self._qbo_query(connection=connection, query=query)
         items = data.get("QueryResponse", {}).get("Item", [])
 
-        # Be defensive: categories can also live in Item resources in some contexts.
-        # We only want an actual sellable service item here.
         for item in items:
             if item.get("Name") == item_name and item.get("Type") == "Service":
                 return item
@@ -344,33 +294,6 @@ class QuickBooksAccountingService:
             raise QuickBooksApiError(f"Unexpected QuickBooks item create response: {data}")
 
         return item
-
-    async def _get_or_create_service_item(
-        self,
-        connection: QboConnection,
-        item_name: str = "brokerage_onboarding_fee",
-        *,
-        description: Optional[str] = "Brokerage onboarding fee",
-        unit_price: Optional[float] = None,
-    ) -> dict[str, Any]:
-        """
-        Return an existing QBO service item by exact name, or create it if missing.
-
-        """
-        existing = await self._get_item_by_name(
-            connection=connection,
-            item_name=item_name,
-        )
-        if existing:
-            return existing
-
-        return await self._create_service_item(
-            connection=connection,
-            item_name=item_name,
-            income_account_id=settings.qbo_income_account_id,
-            description=description,
-            unit_price=unit_price,
-        )
 
     async def _create_customer(
         self,
