@@ -81,20 +81,19 @@ class QuickBooksAccountingService:
             )
 
             # Get or create the service item for the invoice line. This is a sellable item in QBO that represents the service we're charging for.
-            existing = await self._get_item_by_name(
+            service_item = await self._get_item_by_name(
                 connection=connection,
                 item_name=item_name,
             )
-            if existing:
-                return existing
-
-            service_item = await self._create_service_item(
-                connection=connection,
-                item_name=item_name,
-                income_account_id=settings.qbo_income_account_id,
-                description=description,
-                unit_price=unit_price,
-            )
+            
+            if not service_item:
+                service_item = await self._create_service_item(
+                    connection=connection,
+                    item_name=item_name,
+                    income_account_id=settings.qbo_income_account_id,
+                    description=description,
+                    unit_price=unit_price,
+                )
             
             service_item_id = service_item.get("Id")
             if not service_item_id:
