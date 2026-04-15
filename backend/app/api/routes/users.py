@@ -11,11 +11,24 @@ from app.schemas.users import (
     CreateUserRequest,
     SendVerificationEmailResponse,
     UpdateUserRequest,
-    UserResponse
+    UserResponse,
+    ForgotPasswordResponse,
+    ForgotPasswordRequest
 )
 from app.api.services.users import UserService, get_users_service
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+# =========================
+# auth routes
+# =========================
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse)
+def forgot_password(
+    payload: Annotated[ForgotPasswordRequest, Body(...)],
+    user_service: Annotated[UserService, Depends(get_users_service)],
+) -> ForgotPasswordResponse:
+    return user_service.request_password_reset(payload.email)
 
 
 # =========================
@@ -48,7 +61,7 @@ def mark_my_password_changed(
 
 # -------------- Admin-only user management routes --------------
 
-@router.get("/", response_model=list[UserResponse])
+@router.get("", response_model=list[UserResponse])
 def get_users(
     _admin_user: Annotated[AuthUser, Depends(require_admin)],
     user_service: Annotated[UserService, Depends(get_users_service)],
@@ -56,7 +69,7 @@ def get_users(
     return user_service.get_buyer_seller_users()
 
 
-@router.post("/")
+@router.post("")
 def create_user(
     payload: Annotated[CreateUserRequest, Body(...)],
     admin_user: Annotated[AuthUser, Depends(require_admin)],

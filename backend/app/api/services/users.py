@@ -11,6 +11,8 @@ from app.lib.email import (
     EmailSendError,
     send_confirmation_email,
     send_next_step_reminder_email,
+    send_password_reset_email,
+    PasswordResetEmailError,
 )
 from app.api.repository.users import UserRepository
 from app.schemas.users import (
@@ -128,6 +130,7 @@ class UserService:
         """Return the current user's profile row."""
         return self.repo.get_my_user_profile(user_id)
 
+
     def update_my_account(
         self,
         auth_user: Any,
@@ -164,6 +167,32 @@ class UserService:
             ) from exc
 
         return self.repo.get_my_user_profile(auth_user.id)
+
+    def request_password_reset(
+            self,
+            email: str,
+    ) -> dict[str, str]:
+        """
+        Generate a Supabase recovery link and send it using our own SMTP email flow.
+        """
+        try:
+            send_password_reset_email(email=email)
+        except PasswordResetEmailError as e:
+            detail_lower = e.detail.lower()
+
+            if "user not found" in detail_lower or "email not found" in detail_lower:
+                return {
+                    "message": "If an account exists for that email, a password reset link has been sent."
+                }
+
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.detail,
+            ) from e
+
+        return {
+            "message": "If an account exists for that email, a password reset link has been sent."
+        }
 
     # =========================
     # admin flow

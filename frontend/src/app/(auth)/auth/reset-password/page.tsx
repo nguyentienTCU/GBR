@@ -200,11 +200,6 @@ export default function ResetPasswordPage() {
             )}
           </div>
         </div>
-
-        <p className="mt-6 px-2 text-center text-sm leading-6 text-[#5f7396] sm:mt-8 sm:text-[15px] sm:leading-7">
-          For security reasons, password reset links may expire. If yours no
-          longer works, request a new one.
-        </p>
       </div>
     </div>
   );

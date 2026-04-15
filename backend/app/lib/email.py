@@ -22,6 +22,17 @@ class ConfirmationEmailError(Exception):
         self.detail = detail
 
 
+class PasswordResetEmailError(Exception):
+    """
+    Raised when password reset link generation or email delivery fails.
+    """
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+
+
 def send_email(to_email: str, subject: str, body: str) -> None:
     """
     Send a plain-text email using SMTP credentials from Settings.
@@ -172,3 +183,67 @@ GBR Onboarding Team
         subject=subject,
         body=body,
     )
+
+
+def send_password_reset_email_message(
+    *,
+    to_email: str,
+    reset_link: str,
+) -> None:
+    subject = "Reset your password"
+    body = f"""
+Hello,
+
+We received a request to reset your password.
+
+Please use the link below to choose a new password:
+{reset_link}
+
+If you did not request this, you can safely ignore this email.
+
+Best regards,
+GBR Onboarding Team
+""".strip()
+
+    send_email(
+        to_email=to_email,
+        subject=subject,
+        body=body,
+    )
+
+
+def send_password_reset_email(
+    *,
+    email: str,
+) -> None:
+    supabase = get_service_supabase_client()
+    settings = get_settings()
+
+    try:
+        response = supabase.auth.admin.generate_link(
+            {
+                "type": "recovery",
+                "email": email,
+                "options": {
+                    "redirect_to": f"{settings.frontend_url}/auth/reset-password",
+                },
+            }
+        )
+    except Exception as e:
+        raise PasswordResetEmailError(
+            status_code=400,
+            detail=f"Failed to generate password reset link: {str(e)}",
+        ) from e
+
+    action_link = response.properties.action_link
+
+    try:
+        send_password_reset_email_message(
+            to_email=email,
+            reset_link=action_link,
+        )
+    except EmailSendError as e:
+        raise PasswordResetEmailError(
+            status_code=500,
+            detail=f"Failed to send password reset email: {str(e)}",
+        ) from e

@@ -1,7 +1,6 @@
 from typing import Literal
 
 from pydantic import AliasChoices, BaseModel, EmailStr, Field
-
 Role = Literal["admin", "mod", "buyer", "seller"]
 
 class CreateUserRequest(BaseModel):
@@ -42,3 +41,11 @@ class SendVerificationEmailResponse(BaseModel):
     message: str
     user_id: str
     email: EmailStr
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str

@@ -24,14 +24,14 @@ type AppShellProps = {
 
 const PUBLIC_ROUTES = new Set([
   "/login",
-  "/forgot-password",
-  "/auth/reset-password",
+  "/forgot-password"
 ]);
 
-const ADMIN_ALLOWED_ROUTES = new Set(["/admin/create", "/admin/clients"]);
+const ADMIN_ALLOWED_ROUTES = new Set(["/admin/create", "/admin/clients", "/auth/reset-password"]);
 
 const USER_ALLOWED_ROUTES = new Set([
   "/dashboard",
+  "/auth/reset-password",
   "/agreement",
   "/deposit-fees",
   "/agreement/return",

@@ -26,11 +26,11 @@ export function updateCurrentUserProfile(payload: UpdateUserPayload) {
 }
 
 export function getUsers() {
-  return apiRequest<User[]>("/users/");
+  return apiRequest<User[]>("/users");
 }
 
 export function createUser(payload: CreateUserPayload) {
-  return apiRequest<CreateUserResponse>("/users/", {
+  return apiRequest<CreateUserResponse>("/users", {
     method: "POST",
     body: payload,
   });

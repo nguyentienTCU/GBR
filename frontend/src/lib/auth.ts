@@ -56,13 +56,11 @@ export async function getAccessToken() {
 }
 
 export async function requestPasswordReset(email: string) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_FRONTEND_URL}/auth/reset-password`,
+  await apiRequest("/users/forgot-password", {
+    method: "POST",
+    body: { email },
+    authenticated: false
   });
-
-  if (error) {
-    throw new Error(error.message);
-  }
 }
 
 export async function updateAuthenticatedUserPassword(password: string) {
