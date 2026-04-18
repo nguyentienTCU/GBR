@@ -57,19 +57,58 @@ class QuickBooksAccountingService:
             connection.realm_id,
             payload.amount,
         )
-        customer_payload = self._build_customer_payload(current_user)
+        metadata = current_user.user_metadata or {}
+        first_name = metadata.get("first_name") or ""
+        last_name = metadata.get("last_name") or ""
+        customer_payload = QuickBooksCustomer(
+            display_name=f"{first_name} {last_name}".strip() or current_user.email,
+            given_name=first_name or None,
+            family_name=last_name or None,
+            primary_email=getattr(current_user, "email", None),
+            primary_phone=getattr(current_user, "phone", None),
+            company_name=metadata.get("company_name"),
+        )
 
         try:
-            # Create a QBO customer if we don't already have a customer_id for this user. We need a customer to create an invoice.
-            customer = self.transaction_repo.get_latest_transaction_by_user_id(user_id)
-            customer_id = customer.get("qbo_customer_id")
+            # The user profile is the source of truth for qbo_customer_id.
+            user_profile = self.user_repo.get_user_profile_by_id(user_id)
+            customer_id = user_profile.get("qbo_customer_id")
             if not customer_id:
-                customer_id =  await self._create_customer(connection=connection, payload=payload).get("Id"); 
+                qbo_customer = None
+                if customer_payload.primary_email:
+                    escaped = self._escape_qbo_query_literal(customer_payload.primary_email)
+                    query = f"SELECT * FROM Customer WHERE PrimaryEmailAddr = '{escaped}'"
+                    data = await self._qbo_query(connection=connection, query=query)
+                    customers = data.get("QueryResponse", {}).get("Customer", [])
 
-            self.user_repo.update_user_qbo_customer_id(
-                user_id=user_id,
-                qbo_customer_id=customer_id,
-            )
+                    for customer in customers:
+                        primary_email = (
+                            customer.get("PrimaryEmailAddr", {}) or {}
+                        ).get("Address")
+                        if primary_email == customer_payload.primary_email:
+                            qbo_customer = customer
+                            break
+
+                    if not qbo_customer and customers:
+                        qbo_customer = customers[0]
+
+                if not qbo_customer:
+                    qbo_customer = await self._create_customer(
+                        connection=connection,
+                        payload=customer_payload,
+                    )
+
+                customer_id = qbo_customer.get("Id")
+                if not customer_id:
+                    raise QuickBooksApiError(
+                        f"QuickBooks customer response missing Id: {qbo_customer}"
+                    )
+
+                updated_user = self.user_repo.update_user_qbo_customer_id(
+                    user_id=user_id,
+                    qbo_customer_id=customer_id,
+                )
+                customer_id = updated_user.get("qbo_customer_id") or customer_id
 
             self.transaction_repo.update_latest_transaction_by_user_id(
                 user_id,
@@ -92,8 +131,6 @@ class QuickBooksAccountingService:
                     connection=connection,
                     item_name=item_name,
                     income_account_id=settings.qbo_income_account_id,
-                    description=description,
-                    unit_price=unit_price,
                 )
             
             service_item_id = service_item.get("Id")
@@ -142,9 +179,16 @@ class QuickBooksAccountingService:
                     f"QuickBooks invoice response missing Id: {invoice_response}"
                 )
             bill_email = current_user.email
-            send_result = await self._send_invoice_email(
+            send_result = await self._qbo_post_without_body(
                 connection=connection,
-                invoice_id=invoice_id,
+                path=f"/v3/company/{connection.realm_id}/invoice/{invoice_id}/send",
+                params={"minorversion": "75"},
+            )
+            logger.info(
+                "%s invoice email sent realm_id=%s invoice_id=%s",
+                LOG_PREFIX,
+                connection.realm_id,
+                invoice_id,
             )
             logger.info(
                 "%s invoice created user_id=%s realm_id=%s invoice_id=%s emailed=%s",
@@ -164,7 +208,6 @@ class QuickBooksAccountingService:
                     status="pending",
                 ),
             )
-            self.user_repo.update_user_step(user_id, 2)
 
             return {
                 "customer_id": customer_id,
@@ -203,24 +246,6 @@ class QuickBooksAccountingService:
         )
         return invoice_response.get("Invoice", invoice_response)
 
-    async def _send_invoice_email(
-        self,
-        connection: QboConnection,
-        invoice_id: str,
-    ) -> dict[str, Any]:
-        send_response = await self._qbo_post_without_body(
-            connection=connection,
-            path=f"/v3/company/{connection.realm_id}/invoice/{invoice_id}/send",
-            params={"minorversion": "75"},
-        )
-        logger.info(
-            "%s invoice email sent realm_id=%s invoice_id=%s",
-            LOG_PREFIX,
-            connection.realm_id,
-            invoice_id,
-        )
-        return send_response
-
     async def sync_transaction_status_by_invoice_id(
         self,
         invoice_id: str,
@@ -235,10 +260,16 @@ class QuickBooksAccountingService:
         if balance == 0:
             update_payload.time_end = datetime.now(timezone.utc)
 
-        return self.transaction_repo.update_transaction_by_qbo_invoice_id(
+        transaction = self.transaction_repo.update_transaction_by_qbo_invoice_id(
             invoice_id,
             update_payload,
         )
+        if balance == 0:
+            user_id = transaction.get("user_id")
+            if user_id:
+                self.user_repo.update_user_step(user_id, 2)
+
+        return transaction
 
     async def _get_item_by_name(
         self,
@@ -313,12 +344,40 @@ class QuickBooksAccountingService:
         if payload.primary_phone:
             body["PrimaryPhone"] = {"FreeFormNumber": payload.primary_phone}
 
-        return await self._qbo_post(
-            connection=connection,
-            path=f"/v3/company/{connection.realm_id}/customer",
-            json_body=body,
-            params={"minorversion": "75"},
-        )
+        try:
+            data = await self._qbo_post(
+                connection=connection,
+                path=f"/v3/company/{connection.realm_id}/customer",
+                json_body=body,
+                params={"minorversion": "75"},
+            )
+        except QuickBooksApiError as exc:
+            message = str(exc)
+            if (
+                "Duplicate Name Exists Error" not in message
+                and '"code":"6240"' not in message
+            ) or not payload.primary_email:
+                raise
+
+            local_part = payload.primary_email.split("@", 1)[0].strip()
+            unique_display_name = payload.primary_email
+            if local_part:
+                unique_display_name = f"{payload.display_name} ({local_part})"
+
+            retry_body = dict(body)
+            retry_body["DisplayName"] = unique_display_name
+            data = await self._qbo_post(
+                connection=connection,
+                path=f"/v3/company/{connection.realm_id}/customer",
+                json_body=retry_body,
+                params={"minorversion": "75"},
+            )
+        customer = data.get("Customer")
+        if not customer:
+            raise QuickBooksApiError(
+                f"Unexpected QuickBooks customer create response: {data}"
+            )
+        return customer
 
     async def _qbo_query(
         self,
@@ -492,23 +551,6 @@ class QuickBooksAccountingService:
     @staticmethod
     def _escape_qbo_query_literal(value: str) -> str:
         return value.replace("\\", "\\\\").replace("'", "\\'")
-
-    @staticmethod
-    def _build_customer_payload(current_user: Any) -> QuickBooksCustomer:
-        metadata = current_user.user_metadata or {}
-        first_name = metadata.get("first_name") or ""
-        last_name = metadata.get("last_name") or ""
-        display_name = f"{first_name} {last_name}".strip() or current_user.email
-
-        return QuickBooksCustomer(
-            display_name=display_name,
-            given_name=first_name or None,
-            family_name=last_name or None,
-            primary_email=getattr(current_user, "email", None),
-            primary_phone=getattr(current_user, "phone", None),
-            company_name=metadata.get("company_name"),
-        )
-
 
 @lru_cache()
 def get_quickbooks_accounting_service() -> QuickBooksAccountingService:
