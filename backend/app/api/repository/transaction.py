@@ -155,22 +155,6 @@ class TransactionRepository:
         transaction = self.get_transaction_by_qbo_invoice_id(qbo_invoice_id)
         return self.update_transaction(transaction["id"], payload)
 
-    def mark_transaction_completed(
-        self,
-        transaction_id: str,
-        qbo_customer_id: str | None = None,
-        qbo_invoice_id: str | None = None,
-    ) -> dict[str, Any]:
-        return self.update_transaction(
-            transaction_id,
-            TransactionUpdateRequest(
-                status="completed",
-                time_end=datetime.now(timezone.utc),
-                qbo_customer_id=qbo_customer_id,
-                qbo_invoice_id=qbo_invoice_id,
-            ),
-        )
-
 
 @lru_cache
 def get_transaction_repository() -> TransactionRepository:

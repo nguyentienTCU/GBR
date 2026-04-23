@@ -40,14 +40,10 @@ class QuickBooksAccountingService:
     async def create_invoice(
         self,
         payload: CreateInvoicePayload,
-        current_user: Any,
+        user_id: str,
     ) -> dict[str, Any]:
         if payload.amount <= 0:
             raise ValueError("Invoice amount must be greater than zero.")
-
-        user_id = getattr(current_user, "id", None)
-        if not user_id:
-            raise ValueError("Authenticated user is missing an id.")
 
         connection = self.quickbooks_repo.get_qbo_connection()
         logger.info(
@@ -57,46 +53,33 @@ class QuickBooksAccountingService:
             connection.realm_id,
             payload.amount,
         )
-        metadata = current_user.user_metadata or {}
-        first_name = metadata.get("first_name") or ""
-        last_name = metadata.get("last_name") or ""
+        user_profile = self.user_repo.get_user_profile_by_id(user_id)
+
+        first_name = user_profile.get("first_name") or ""
+        last_name = user_profile.get("last_name") or ""
+        email = user_profile.get("email")
+        phone = user_profile.get("phone")
+        company_name = user_profile.get("company_name")
+
         customer_payload = QuickBooksCustomer(
-            display_name=f"{first_name} {last_name}".strip() or current_user.email,
+            display_name=f"{first_name} {last_name}".strip() or email,
             given_name=first_name or None,
             family_name=last_name or None,
-            primary_email=getattr(current_user, "email", None),
-            primary_phone=getattr(current_user, "phone", None),
-            company_name=metadata.get("company_name"),
+            primary_email=email,
+            primary_phone=phone,
+            company_name=company_name,
         )
 
         try:
             # The user profile is the source of truth for qbo_customer_id.
             user_profile = self.user_repo.get_user_profile_by_id(user_id)
             customer_id = user_profile.get("qbo_customer_id")
+
             if not customer_id:
-                qbo_customer = None
-                if customer_payload.primary_email:
-                    escaped = self._escape_qbo_query_literal(customer_payload.primary_email)
-                    query = f"SELECT * FROM Customer WHERE PrimaryEmailAddr = '{escaped}'"
-                    data = await self._qbo_query(connection=connection, query=query)
-                    customers = data.get("QueryResponse", {}).get("Customer", [])
-
-                    for customer in customers:
-                        primary_email = (
-                            customer.get("PrimaryEmailAddr", {}) or {}
-                        ).get("Address")
-                        if primary_email == customer_payload.primary_email:
-                            qbo_customer = customer
-                            break
-
-                    if not qbo_customer and customers:
-                        qbo_customer = customers[0]
-
-                if not qbo_customer:
-                    qbo_customer = await self._create_customer(
-                        connection=connection,
-                        payload=customer_payload,
-                    )
+                qbo_customer = await self._create_customer(
+                    connection=connection,
+                    payload=customer_payload,
+                )
 
                 customer_id = qbo_customer.get("Id")
                 if not customer_id:
@@ -140,7 +123,7 @@ class QuickBooksAccountingService:
                 )
 
             body: dict[str, Any] = {
-                "BillEmail": { "Address": current_user.email },
+                "BillEmail": { "Address": email },
                 "CustomerRef": {"value": customer_id},
                 "Line": [
                     {
@@ -178,7 +161,7 @@ class QuickBooksAccountingService:
                 raise QuickBooksApiError(
                     f"QuickBooks invoice response missing Id: {invoice_response}"
                 )
-            bill_email = current_user.email
+            bill_email = email
             send_result = await self._qbo_post_without_body(
                 connection=connection,
                 path=f"/v3/company/{connection.realm_id}/invoice/{invoice_id}/send",

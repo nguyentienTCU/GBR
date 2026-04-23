@@ -48,7 +48,7 @@ async def create_quickbooks_invoice(
     try:
         return await quickbooks_service.create_invoice(
             payload=invoice_payload,
-            current_user=current_user,
+            user_id=current_user.id,
         )
     except (QuickBooksApiError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
