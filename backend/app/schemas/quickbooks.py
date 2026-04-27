@@ -22,10 +22,10 @@ class QuickBooksApiError(Exception):
 @dataclass
 class CreateInvoicePayload:
     amount: float
-    txn_date: Optional[str] = None  # YYYY-MM-DD
-    due_date: Optional[str] = None  # YYYY-MM-DD
-    customer_memo: Optional[str] = None
-    private_note: Optional[str] = None
+    txn_date: str  # YYYY-MM-DD
+    due_date: str  # YYYY-MM-DD
+    customer_memo: str
+    private_note: str
     doc_number: Optional[str] = None
 
 

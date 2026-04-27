@@ -26,10 +26,11 @@ router = APIRouter(prefix="/quickbooks", tags=["quickbooks"])
 
 class QuickBooksCreateInvoiceRequest(BaseModel):
     amount: float
-    txn_date: str | None = None
-    due_date: str | None = None
-    customer_memo: str | None = None
-    private_note: str | None = None
+    txn_date: str
+    due_date: str
+    customer_memo: str
+    private_note: str
+    doc_number: str | None = None
 
 @router.post("/invoices")
 async def create_quickbooks_invoice(
@@ -43,6 +44,7 @@ async def create_quickbooks_invoice(
         due_date=payload.due_date,
         customer_memo=payload.customer_memo,
         private_note=payload.private_note,
+        doc_number=payload.doc_number,
     )
 
     try:

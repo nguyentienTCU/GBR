@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from functools import lru_cache
 import logging
 from typing import Any, Optional
@@ -54,6 +54,7 @@ class QuickBooksAccountingService:
             payload.amount,
         )
         user_profile = self.user_repo.get_user_profile_by_id(user_id)
+        latest_transaction = self.transaction_repo.get_latest_transaction_by_user_id(user_id)
 
         first_name = user_profile.get("first_name") or ""
         last_name = user_profile.get("last_name") or ""
@@ -72,9 +73,9 @@ class QuickBooksAccountingService:
 
         try:
             # The user profile is the source of truth for qbo_customer_id.
-            user_profile = self.user_repo.get_user_profile_by_id(user_id)
             customer_id = user_profile.get("qbo_customer_id")
 
+            # create quickbook Customer entity if have not already
             if not customer_id:
                 qbo_customer = await self._create_customer(
                     connection=connection,
@@ -93,14 +94,58 @@ class QuickBooksAccountingService:
                 )
                 customer_id = updated_user.get("qbo_customer_id") or customer_id
 
-            self.transaction_repo.update_latest_transaction_by_user_id(
-                user_id,
-                TransactionUpdateRequest(
-                    qbo_customer_id=customer_id,
-                    amount=payload.amount,
-                    status="pending",
-                ),
-            )
+            
+            existing_invoice_id = latest_transaction.get("qbo_invoice_id")
+            if existing_invoice_id:
+                try:
+                    existing_invoice = await self.get_invoice_by_id(existing_invoice_id)
+                except QuickBooksApiError as exc:
+                    logger.warning(
+                        "%s existing invoice lookup failed user_id=%s realm_id=%s invoice_id=%s error=%s",
+                        LOG_PREFIX,
+                        user_id,
+                        connection.realm_id,
+                        existing_invoice_id,
+                        str(exc),
+                    )
+                else:
+                    due_date_value = existing_invoice.get("DueDate")
+                    invoice_due_date = None
+                    if isinstance(due_date_value, str):
+                        try:
+                            invoice_due_date = date.fromisoformat(due_date_value)
+                        except ValueError:
+                            logger.warning(
+                                "%s existing invoice has invalid due date user_id=%s realm_id=%s invoice_id=%s due_date=%s",
+                                LOG_PREFIX,
+                                user_id,
+                                connection.realm_id,
+                                existing_invoice_id,
+                                due_date_value,
+                            )
+
+                    if invoice_due_date is None or invoice_due_date >= datetime.now(timezone.utc).date():
+                        # send invoice payment email
+                        await self._qbo_post_without_body(
+                            connection=connection,
+                            path=f"/v3/company/{connection.realm_id}/invoice/{existing_invoice_id}/send",
+                            params={"minorversion": "75"},
+                        )
+                        logger.info(
+                            "%s existing invoice email sent user_id=%s realm_id=%s invoice_id=%s",
+                            LOG_PREFIX,
+                            user_id,
+                            connection.realm_id,
+                            existing_invoice_id,
+                        )
+                        
+                        return {
+                            "customer_id": customer_id,
+                            "invoice_id": existing_invoice_id,
+                            "bill_email": email,
+                            "email_sent": True,
+                            "invoice": existing_invoice,
+                        }
 
             # Get or create the service item for the invoice line. This is a sellable item in QBO that represents the service we're charging for.
             item_name = "Brokerage Service Fee"
@@ -122,8 +167,13 @@ class QuickBooksAccountingService:
                     f"QuickBooks service item response missing Id: {service_item}"
                 )
 
+            # request a new invoice since the user hasn't received one or the previous invoice is outdated
             body: dict[str, Any] = {
                 "BillEmail": { "Address": email },
+                "TxnDate": payload.txn_date,
+                "DueDate": payload.due_date,
+                "CustomerMemo": {"value": payload.customer_memo},
+                "PrivateNote": payload.private_note,
                 "CustomerRef": {"value": customer_id},
                 "Line": [
                     {
@@ -139,15 +189,9 @@ class QuickBooksAccountingService:
                 "AllowOnlineCreditCardPayment": True,
                 "AllowOnlineACHPayment": True,
             }
-
-            if payload.txn_date:
-                body["TxnDate"] = payload.txn_date
-            if payload.due_date:
-                body["DueDate"] = payload.due_date
-            if payload.customer_memo:
-                body["CustomerMemo"] = {"value": payload.customer_memo}
-            if payload.private_note:
-                body["PrivateNote"] = payload.private_note
+            
+            if payload.doc_number:
+                body["DocNumber"] = payload.doc_number
 
             invoice_response = await self._qbo_post(
                 connection=connection,
@@ -161,8 +205,7 @@ class QuickBooksAccountingService:
                 raise QuickBooksApiError(
                     f"QuickBooks invoice response missing Id: {invoice_response}"
                 )
-            bill_email = email
-            send_result = await self._qbo_post_without_body(
+            await self._qbo_post_without_body(
                 connection=connection,
                 path=f"/v3/company/{connection.realm_id}/invoice/{invoice_id}/send",
                 params={"minorversion": "75"},
@@ -195,9 +238,8 @@ class QuickBooksAccountingService:
             return {
                 "customer_id": customer_id,
                 "invoice_id": invoice_id,
-                "bill_email": bill_email,
+                "bill_email": email,
                 "email_sent": True,
-                "send_result": send_result,
                 "invoice": invoice_response,
             }
         except Exception:
