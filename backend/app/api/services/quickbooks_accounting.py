@@ -56,8 +56,8 @@ class QuickBooksAccountingService:
         user_profile = self.user_repo.get_user_profile_by_id(user_id)
         latest_transaction = self.transaction_repo.get_latest_transaction_by_user_id(user_id)
 
-        first_name = user_profile.get("first_name") or ""
-        last_name = user_profile.get("last_name") or ""
+        first_name = user_profile.get("first_name")
+        last_name = user_profile.get("last_name")
         email = user_profile.get("email")
         phone = user_profile.get("phone")
         company_name = user_profile.get("company_name")
@@ -83,11 +83,6 @@ class QuickBooksAccountingService:
                 )
 
                 customer_id = qbo_customer.get("Id")
-                if not customer_id:
-                    raise QuickBooksApiError(
-                        f"QuickBooks customer response missing Id: {qbo_customer}"
-                    )
-
                 updated_user = self.user_repo.update_user_qbo_customer_id(
                     user_id=user_id,
                     qbo_customer_id=customer_id,

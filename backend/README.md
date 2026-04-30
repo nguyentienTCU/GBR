@@ -22,6 +22,9 @@ Windows PowerShell:
 make install
 ```
 
+This installs the runtime dependencies and the backend test runner from
+`requirements.txt`.
+
 ## Environment
 
 Create a `.env` file in the backend root:
@@ -37,13 +40,39 @@ DOCUSIGN_ACCOUNT_ID=
 DOCUSIGN_BASE_PATH=https://demo.docusign.net/restapi
 DOCUSIGN_AUTH_SERVER=account-d.docusign.com
 DOCUSIGN_PRIVATE_KEY_PATH=
+DOCUSIGN_OAUTH_BASE_PATH=account-d.docusign.com
 DOCUSIGN_REDIRECT_URI=http://localhost:8000/docusign/callback
+DOCUSIGN_BUYER_TEMPLATE_ID=
+DOCUSIGN_SELLER_TEMPLATE_ID=
+
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
+
+FRONTEND_URL=http://localhost:3000
+
+QBO_CLIENT_ID=
+QBO_CLIENT_SECRET=
+QBO_REDIRECT_URI=http://localhost:8000/quickbooks/callback
+QBO_SCOPES=com.intuit.quickbooks.accounting
+QBO_ENV=sandbox
+QBO_REALM_ID=
+QBO_AUTH_BASE=https://appcenter.intuit.com/connect/oauth2
+QBO_TOKEN_URL=https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer
+QBO_BASE_URL=https://sandbox-quickbooks.api.intuit.com/v3
+QBO_INCOME_ACCOUNT_ID=
+QBO_WEBHOOK_VERIFIER_TOKEN=
 ```
 
 Notes:
 
 - `DOCUSIGN_REDIRECT_URI` should match the callback URI configured in DocuSign.
 - `DOCUSIGN_PRIVATE_KEY_PATH` must point to a local `.pem` file.
+- Keep real API keys, service role keys, SMTP passwords, and client secrets out of
+  tracked files. Store them only in your local `.env` or in your deployment/CI
+  secret store.
 
 ## DocuSign Setup
 
@@ -91,6 +120,25 @@ App URLs:
 
 - API: `http://127.0.0.1:8000`
 - Swagger docs: `http://127.0.0.1:8000/docs`
+
+## Tests
+
+Backend unit tests live in `tests/` and are run with pytest:
+
+```powershell
+python -m pytest
+```
+
+The pytest configuration is in `pytest.ini`. It limits test discovery to the
+`tests/` directory and disables pytest's cache provider to avoid local
+workspace cache permission issues.
+
+The service-layer tests use fake repositories and API clients, so they do not
+call Supabase, QuickBooks, DocuSign, or SMTP. Test-only environment defaults
+are set in `tests/conftest.py` so the app settings can load during imports.
+
+CI runs the same command in the backend job after installing dependencies and
+import-checking the FastAPI application.
 
 ## Quick Checks
 
