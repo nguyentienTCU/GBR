@@ -8,6 +8,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  FileText,
   LoaderCircle,
   ShieldCheck,
   Sparkles,
@@ -19,6 +20,7 @@ import { Notification } from "@/components/ui/Notification";
 import { useUserStep } from "@/contexts/UserStepContext";
 import { useAgreementSync } from "@/contexts/AgreementSyncContext";
 import { USER_STEP_ROUTES } from "@/lib/user-step";
+import { getMySignedContractPdf } from "@/service/contracts.service";
 import { createRecipientView } from "@/service/docusign.service";
 
 const agreementSections = [
@@ -48,6 +50,9 @@ export default function AgreementPage() {
   const [signingError, setSigningError] = useState("");
   const [showSigningFrame, setShowSigningFrame] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [isViewingSignedContract, setIsViewingSignedContract] = useState(false);
+  const [signedContractError, setSignedContractError] = useState("");
+  const [signedContractViewerUrl, setSignedContractViewerUrl] = useState("");
 
   const { currentStep } = useUserStep();
 
@@ -95,6 +100,39 @@ export default function AgreementPage() {
     }
   }
 
+  async function handleViewSignedContract() {
+    try {
+      setIsViewingSignedContract(true);
+      setSignedContractError("");
+
+      const pdf = await getMySignedContractPdf();
+      const pdfUrl = URL.createObjectURL(pdf);
+      setSignedContractViewerUrl((previousUrl) => {
+        if (previousUrl) {
+          URL.revokeObjectURL(previousUrl);
+        }
+        return pdfUrl;
+      });
+    } catch (error) {
+      setSignedContractError(
+        error instanceof Error
+          ? error.message
+          : "Failed to open the signed contract.",
+      );
+    } finally {
+      setIsViewingSignedContract(false);
+    }
+  }
+
+  function handleCloseSignedContractViewer() {
+    setSignedContractViewerUrl((previousUrl) => {
+      if (previousUrl) {
+        URL.revokeObjectURL(previousUrl);
+      }
+      return "";
+    });
+  }
+
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (event.origin !== window.location.origin) return;
@@ -117,6 +155,14 @@ export default function AgreementPage() {
     setSigningUrl("");
     setNotificationOpen(true);
   }, [shouldShowCompletionNotice]);
+
+  useEffect(() => {
+    return () => {
+      if (signedContractViewerUrl) {
+        URL.revokeObjectURL(signedContractViewerUrl);
+      }
+    };
+  }, [signedContractViewerUrl]);
 
   return (
     <div className="app-page min-h-dvh">
@@ -194,15 +240,67 @@ export default function AgreementPage() {
                     <p className="mt-3 max-w-sm text-base leading-7 text-[#4E617D]">
                       Continue to the deposit fee workflow when you are ready.
                     </p>
-                    <Button
-                      type="button"
-                      className="mt-5 h-14 rounded-2xl px-7 text-base sm:text-lg"
-                      onClick={() => router.push(USER_STEP_ROUTES.depositFees)}
-                    >
-                      Go To Deposit Fee
-                    </Button>
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                      <Button
+                        type="button"
+                        disabled={isViewingSignedContract}
+                        className="h-14 rounded-2xl px-7 text-base sm:text-lg"
+                        onClick={() => void handleViewSignedContract()}
+                      >
+                        <FileText className="mr-2 h-5 w-5" strokeWidth={2} />
+                        {isViewingSignedContract
+                          ? "Loading Contract..."
+                          : signedContractViewerUrl
+                            ? "Refresh Signed Contract"
+                            : "View Signed Contract"}
+                      </Button>
+                      <Button
+                        type="button"
+                        className="h-14 rounded-2xl px-7 text-base sm:text-lg"
+                        onClick={() => router.push(USER_STEP_ROUTES.depositFees)}
+                      >
+                        Go To Deposit Fee
+                      </Button>
+                    </div>
+                    {signedContractError ? (
+                      <p className="mt-3 text-sm font-medium text-[#B42318]">
+                        {signedContractError}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
+
+                {signedContractViewerUrl ? (
+                  <div className="mt-5 overflow-hidden rounded-lg border border-[var(--border)] bg-white">
+                    <div className="flex flex-col gap-3 border-b border-[var(--border)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#EAF3F8] text-[var(--accent)]">
+                          <FileText className="h-5 w-5" strokeWidth={2} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-[#223250]">
+                            Signed Contract
+                          </p>
+                          <p className="text-sm text-[#62738E]">
+                            Buyer representation agreement
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center justify-center rounded-md border border-[var(--border)] bg-white px-4 text-sm font-semibold text-[#223250] transition hover:bg-[var(--surface-muted)]"
+                        onClick={handleCloseSignedContractViewer}
+                      >
+                        Close Viewer
+                      </button>
+                    </div>
+                    <iframe
+                      title="Signed contract PDF"
+                      src={signedContractViewerUrl}
+                      className="h-[720px] w-full bg-[#F7F9FC]"
+                    />
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

@@ -2,70 +2,91 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   Check,
-  ChevronDown,
-  FileText,
-  MoreHorizontal,
-  Plus,
 } from "lucide-react";
 
 import UpdateUserProfileModal from "@/components/admin/UserProfileModal";
-import { getUserById } from "@/service/users.service";
-import type { User } from "@/types/user";
 import AppLoadingScreen from "@/components/common/AppLoadingScreen";
+import {
+  Notification,
+  type NotificationVariant,
+} from "@/components/ui/Notification";
+import { Button } from "@/components/ui/button";
+import {
+  getUserById,
+  resendVerificationEmail,
+  sendReminderEmail,
+} from "@/service/users.service";
+import { getUserSignedContractPdf } from "@/service/contracts.service";
+import type { User } from "@/types/user";
 
 function getFullName(user: User) {
   const fullName = `${user.first_name} ${user.last_name}`.trim();
   return fullName || user.email;
 }
 
-const progressSteps = [
-  ["Client Profile", "Completed", "Apr 17, 2025"],
-  ["Documents", "Completed", "Apr 18, 2025"],
-  ["Agreements", "In Progress", ""],
-  ["Funding", "Not Started", ""],
-  ["Review", "Not Started", ""],
-  ["Activate", "Not Started", ""],
-] as const;
+function getRoleLabel(role: User["role"]) {
+  const roleMap: Record<User["role"], string> = {
+    admin: "Admin",
+    mod: "Moderator",
+    buyer: "Buyer",
+    seller: "Seller",
+  };
 
-const taskRows = [
-  ["Review Client Profile", "Sarah Thompson", "Apr 17, 2025", "Completed", "-"],
-  ["Collect Client Documents", "John Miller", "Apr 18, 2025", "Completed", "-"],
-  ["Review & Sign Agreements", "John Miller", "Apr 22, 2025", "In Progress", "High"],
-  ["Fund Account", "John Miller", "Apr 29, 2025", "Pending", "High"],
-  ["Compliance Review", "Compliance Team", "May 1, 2025", "Pending", "Medium"],
-  ["Account Activation", "Operations Team", "May 2, 2025", "Pending", "Medium"],
-] as const;
+  return roleMap[role] ?? role;
+}
 
-const documentRows = [
-  ["Pre-Application", "Completed", "Apr 17, 2025"],
-  ["ID Verification", "Completed", "Apr 17, 2025"],
-  ["Account Application", "Completed", "Apr 18, 2025"],
-  ["Disclosures & Notices", "In Progress", "Apr 18, 2025"],
-  ["IRA Adoption Agreement", "Pending", "-"],
-  ["Custodial Agreement", "Pending", "-"],
-  ["Beneficiary Designation", "Pending", "-"],
-] as const;
+function getStepLabel(step: number | null) {
+  const stepMap: Record<number, string> = {
+    0: "Agreement",
+    1: "Deposit Fee",
+    2: "Complete",
+  };
 
-const activityRows = [
-  ["Apr 18, 2025  2:14 PM", "John Miller", "Uploaded document: Account Application", "View"],
-  ["Apr 18, 2025  11:03 AM", "John Miller", "Completed task: Collect Client Documents", "View"],
-  ["Apr 17, 2025  4:28 PM", "Sarah Thompson", "Task completed: Review Client Profile", "View"],
-  ["Apr 17, 2025  4:15 PM", "System", "Onboarding process started", "-"],
-] as const;
+  if (step === null) return "Unknown";
+  return stepMap[step] ?? `Step ${step}`;
+}
 
-function statusClass(status: string) {
-  if (status === "Completed") {
-    return "border-[#a8c8dc] bg-[#edf7fc] text-[#063655]";
-  }
+function getStepDescription(step: number | null) {
+  if (step === 0) return "Agreement pending";
+  if (step === 1) return "Deposit fee pending";
+  if (step === 2) return "Onboarding complete";
+  return "No progress reported";
+}
 
-  if (status === "In Progress") {
-    return "border-[#0b5e89] bg-white text-[#063655]";
-  }
+function formatValue(value: string | null | undefined) {
+  return value?.trim() || "Not provided";
+}
 
-  return "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--ink)]";
+function getWorkflowSteps(currentStep: number | null) {
+  const step = currentStep ?? -1;
+
+  return [
+    {
+      title: "Agreement",
+      description: "Client reviews and signs the representation agreement.",
+      state: step > 0 ? "completed" : step === 0 ? "active" : "pending",
+    },
+    {
+      title: "Deposit Fee",
+      description: "Client submits the required deposit payment.",
+      state: step > 1 ? "completed" : step === 1 ? "active" : "pending",
+    },
+    {
+      title: "Complete",
+      description: "Client onboarding is complete.",
+      state: step >= 2 ? "completed" : "pending",
+    },
+  ] as const;
+}
+
+function workflowStateClass(state: "completed" | "active" | "pending") {
+  if (state === "completed") return "border-[var(--border)] text-[var(--ink)]";
+  if (state === "active") return "border-[var(--ink)] text-[var(--ink)]";
+  return "border-[var(--border)] text-[var(--text-muted)]";
 }
 
 export default function AdminClientDetailPage() {
@@ -77,6 +98,16 @@ export default function AdminClientDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [isSendingVerification, setIsSendingVerification] = useState(false);
+  const [isSendingReminder, setIsSendingReminder] = useState(false);
+  const [isLoadingContract, setIsLoadingContract] = useState(false);
+  const [contractViewerUrl, setContractViewerUrl] = useState<string | null>(null);
+  const [contractError, setContractError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{
+    variant: NotificationVariant;
+    title: string;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!userId || hasFetchedRef.current) return;
@@ -98,6 +129,100 @@ export default function AdminClientDetailPage() {
 
     void loadUser();
   }, [userId]);
+
+  const workflowSteps = useMemo(
+    () => getWorkflowSteps(user?.current_step ?? null),
+    [user?.current_step],
+  );
+  const hasCompletedAgreement = (user?.current_step ?? -1) > 0;
+
+  useEffect(() => {
+    return () => {
+      if (contractViewerUrl) {
+        URL.revokeObjectURL(contractViewerUrl);
+      }
+    };
+  }, [contractViewerUrl]);
+
+  async function handleSendVerification() {
+    if (!user || user.email_verified) return;
+
+    try {
+      setIsSendingVerification(true);
+      const response = await resendVerificationEmail(user.id);
+      setNotice({
+        variant: "success",
+        title: "Verification Sent",
+        message: response.message,
+      });
+    } catch (err) {
+      setNotice({
+        variant: "error",
+        title: "Verification Failed",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to send verification email.",
+      });
+    } finally {
+      setIsSendingVerification(false);
+    }
+  }
+
+  async function handleSendReminder() {
+    if (!user || user.current_step === 2) return;
+
+    try {
+      setIsSendingReminder(true);
+      const response = await sendReminderEmail(user.id);
+      setNotice({
+        variant: "success",
+        title: "Reminder Sent",
+        message: response.message,
+      });
+    } catch (err) {
+      setNotice({
+        variant: "error",
+        title: "Reminder Failed",
+        message:
+          err instanceof Error ? err.message : "Failed to send reminder email.",
+      });
+    } finally {
+      setIsSendingReminder(false);
+    }
+  }
+
+  async function handleViewContract() {
+    if (!user || !hasCompletedAgreement) return;
+
+    try {
+      setIsLoadingContract(true);
+      setContractError(null);
+      const pdfBlob = await getUserSignedContractPdf(user.id);
+      const nextUrl = URL.createObjectURL(pdfBlob);
+
+      setContractViewerUrl((currentUrl) => {
+        if (currentUrl) URL.revokeObjectURL(currentUrl);
+        return nextUrl;
+      });
+    } catch (err) {
+      setContractError(
+        err instanceof Error
+          ? err.message
+          : "Failed to load the signed contract.",
+      );
+    } finally {
+      setIsLoadingContract(false);
+    }
+  }
+
+  function handleCloseContractViewer() {
+    setContractViewerUrl((currentUrl) => {
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+      return null;
+    });
+    setContractError(null);
+  }
 
   if (isLoading) {
     return (
@@ -131,258 +256,251 @@ export default function AdminClientDetailPage() {
     );
   }
 
-  const initials = `${user.first_name?.[0] || user.email?.[0] || "J"}${user.last_name?.[0] || "D"}`.toUpperCase();
-
   return (
-    <div className="app-container">
-      <div className="mx-auto max-w-[1320px]">
+    <div className="app-page min-h-screen">
+      {notice ? (
+        <Notification
+          open
+          variant={notice.variant}
+          title={notice.title}
+          message={notice.message}
+          onClose={() => setNotice(null)}
+        />
+      ) : null}
+
+      <div
+        className={`app-container max-w-7xl space-y-3 ${
+          contractViewerUrl ? "" : "lg:h-[calc(100dvh-96px)] lg:overflow-hidden"
+        }`}
+      >
         <Link
           href="/admin/clients"
-          className="inline-flex items-center text-sm font-medium text-[var(--ink)] hover:text-[var(--accent-dark)]"
+          className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-muted)] hover:text-[var(--ink)]"
         >
-          &larr; Back to Clients
+          <ArrowLeft className="h-4 w-4" strokeWidth={2} />
+          Back to Clients
         </Link>
 
-        <div className="mt-5 flex flex-col gap-3">
-          <section className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-5">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-[var(--accent)] bg-white text-2xl font-medium text-[var(--ink)]">
-                {initials}
-              </div>
-              <div>
+        <section className="border-b border-[var(--border)] bg-transparent pb-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
                 <h1 className="text-2xl font-semibold leading-tight text-[var(--ink)]">
                   {getFullName(user)}
                 </h1>
-                <p className="mt-1 text-sm text-[var(--ink)]">
-                  Individual Retirement Account (IRA)
-                </p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">
-                  ONB-2025-0417 <span className="mx-1">•</span> Started Apr 17, 2025
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-[120px_100px_120px_150px_100px] lg:items-center">
-              <div className="border-l border-[var(--border)] pl-5">
-                <p className="text-xs text-[var(--text-muted)]">Advisor</p>
-                <p className="mt-1 font-medium text-[var(--ink)]">Sarah Thompson</p>
-              </div>
-              <div className="border-l border-[var(--border)] pl-5">
-                <p className="text-xs text-[var(--text-muted)]">Branch</p>
-                <p className="mt-1 font-medium text-[var(--ink)]">Dallas, TX</p>
-              </div>
-              <div className="border-l border-[var(--border)] pl-5">
-                <p className="text-xs text-[var(--text-muted)]">Account Type</p>
-                <p className="mt-1 font-medium text-[var(--ink)]">Traditional IRA</p>
-              </div>
-              <div className="border-l border-[var(--border)] pl-5">
-                <p className="text-xs text-[var(--text-muted)]">Onboarding Status</p>
-                <span className="mt-1 inline-flex rounded border border-[var(--accent)] px-4 py-1 text-xs font-medium text-[var(--accent-dark)]">
-                  In Progress
+                <span className="text-sm text-[var(--text-muted)]">
+                  {getRoleLabel(user.role)}
                 </span>
               </div>
-              <button className="inline-flex h-9 items-center justify-center gap-2 rounded border border-[var(--border)] bg-white px-4 text-sm font-medium text-[var(--ink)] hover:bg-[var(--surface-muted)]">
-                Actions <ChevronDown className="h-4 w-4" />
+              <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-[#5F6F89]">
+                <span>{user.email}</span>
+                <span>{formatValue(user.phone_number)}</span>
+                <span>{formatValue(user.company_name)}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row lg:shrink-0">
+              <Button
+                type="button"
+                variant="secondary"
+                className="gap-2"
+                onClick={() => setIsUpdateModalOpen(true)}
+              >
+                Edit Profile
+              </Button>
+              <Button
+                type="button"
+                className="gap-2"
+                disabled={isSendingReminder || user.current_step === 2}
+                onClick={() => void handleSendReminder()}
+              >
+                {isSendingReminder ? "Sending..." : "Send Reminder"}
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-3 lg:grid-cols-4">
+          <div className="rounded border border-[var(--border)] bg-white p-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                Profile
+              </p>
+              <p className="mt-3 text-lg font-semibold text-[var(--ink)]">
+                {getFullName(user)}
+              </p>
+            </div>
+            <div className="mt-5 space-y-1 text-sm text-[#5F6F89]">
+              <p>{getRoleLabel(user.role)}</p>
+              <p className="truncate">{formatValue(user.company_name)}</p>
+            </div>
+          </div>
+
+          <div className="rounded border border-[var(--border)] bg-white p-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                Contact
+              </p>
+              <p className="mt-3 break-all text-sm font-semibold leading-5 text-[var(--ink)]">
+                {user.email}
+              </p>
+            </div>
+            <p className="mt-5 text-sm text-[#5F6F89]">{formatValue(user.phone_number)}</p>
+          </div>
+
+          <div className="rounded border border-[var(--border)] bg-white p-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                Verification
+              </p>
+              <p className="mt-3 text-lg font-semibold text-[var(--ink)]">
+                {user.email_verified ? "Verified" : "Unverified"}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={user.email_verified || isSendingVerification}
+              onClick={() => void handleSendVerification()}
+              className="mt-5 text-left text-sm font-semibold text-[var(--accent-dark)] disabled:cursor-not-allowed disabled:text-[var(--text-muted)]"
+            >
+              {isSendingVerification ? "Sending..." : "Resend verification"}
+            </button>
+          </div>
+
+          <div className="rounded border border-[var(--border)] bg-white p-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                Current Step
+              </p>
+              <p className="mt-3 text-lg font-semibold text-[var(--ink)]">
+                {getStepLabel(user.current_step)}
+              </p>
+            </div>
+            <p className="mt-5 text-sm leading-5 text-[#5F6F89]">
+              {getStepDescription(user.current_step)}
+            </p>
+          </div>
+
+          <div className="rounded border border-[var(--border)] bg-white p-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                Company
+              </p>
+              <p className="mt-3 text-lg font-semibold text-[var(--ink)]">
+                {formatValue(user.company_name)}
+              </p>
+            </div>
+            <p className="mt-5 text-sm text-[#5F6F89]">{getRoleLabel(user.role)}</p>
+          </div>
+
+          <div className="rounded border border-[var(--border)] bg-white p-5 lg:col-span-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                Workflow
+              </h2>
+              <span className="text-sm font-medium text-[var(--text-muted)]">
+                {getStepLabel(user.current_step)}
+              </span>
+            </div>
+            <div className="mt-3 divide-y divide-[var(--border)]">
+              {workflowSteps.map((step, index) => {
+                const isComplete = step.state === "completed";
+                const isActive = step.state === "active";
+
+                return (
+                  <div
+                    key={step.title}
+                    className="grid grid-cols-[28px_1fr_auto] items-center gap-3 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div
+                      className={`flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold ${workflowStateClass(step.state)}`}
+                    >
+                      {isComplete ? <Check className="h-3.5 w-3.5" strokeWidth={2.25} /> : index + 1}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--ink)]">{step.title}</p>
+                      <p className="mt-0.5 line-clamp-1 text-xs text-[#5F6F89]">{step.description}</p>
+                    </div>
+                    <span className="text-xs text-[var(--text-muted)]">
+                      {isComplete ? "Done" : isActive ? "Current" : "Pending"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded border border-[var(--border)] bg-white p-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                Account ID
+              </p>
+              <p className="mt-3 break-all text-xs font-semibold leading-5 text-[var(--ink)]">
+                {user.id}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded border border-[var(--border)] bg-white p-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--text-muted)]">
+                Actions
+              </p>
+            </div>
+            <div className="mt-4 space-y-2">
+              <button
+                type="button"
+                className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 text-sm font-semibold text-[var(--ink)] transition hover:bg-[var(--surface-muted)]"
+                onClick={() => setIsUpdateModalOpen(true)}
+              >
+                Edit Profile
+              </button>
+              <button
+                type="button"
+                disabled={user.current_step === 2 || isSendingReminder}
+                className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 text-sm font-semibold text-[var(--ink)] transition hover:bg-[var(--surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void handleSendReminder()}
+              >
+                {isSendingReminder ? "Sending..." : "Send Reminder"}
+              </button>
+              {hasCompletedAgreement ? (
+                <button
+                  type="button"
+                  disabled={isLoadingContract}
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 text-sm font-semibold text-[var(--ink)] transition hover:bg-[var(--surface-muted)] disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => void handleViewContract()}
+                >
+                  {isLoadingContract ? "Loading..." : "View Contract"}
+                </button>
+              ) : null}
+              {contractError ? (
+                <p className="text-xs leading-5 text-red-600">{contractError}</p>
+              ) : null}
+            </div>
+          </div>
+        </section>
+
+        {contractViewerUrl ? (
+          <section className="rounded border border-[var(--border)] bg-white">
+            <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+              <h2 className="text-sm font-semibold text-[var(--ink)]">
+                Signed Contract
+              </h2>
+              <button
+                type="button"
+                className="text-sm font-semibold text-[var(--text-muted)] hover:text-[var(--ink)]"
+                onClick={handleCloseContractViewer}
+              >
+                Close
               </button>
             </div>
+            <iframe
+              title="Signed contract PDF"
+              src={contractViewerUrl}
+              className="h-[58vh] w-full bg-white"
+            />
           </section>
-
-          <div className="grid gap-3 xl:grid-cols-[1.35fr_1fr]">
-            <section className="panel">
-              <div className="panel-header">
-                <h2 className="text-base font-semibold text-[var(--ink)]">Onboarding Progress</h2>
-              </div>
-              <div className="px-8 py-6">
-                <div className="relative grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-6">
-                  <div className="absolute left-[8%] right-[8%] top-4 hidden h-px bg-[var(--border)] lg:block" />
-                  <div className="absolute left-[8%] top-4 hidden h-px w-[31%] bg-[var(--accent)] lg:block" />
-                  {progressSteps.map(([label, state, date], index) => {
-                    const done = index < 2;
-                    const active = index === 2;
-                    return (
-                      <div key={label} className="relative z-10 text-center">
-                        <div
-                          className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold ${
-                            done || active
-                              ? "bg-[var(--accent)] text-white"
-                              : "bg-[#e8e6e0] text-[var(--ink)]"
-                          }`}
-                        >
-                          {done ? <Check className="h-4 w-4" /> : index + 1}
-                        </div>
-                        <p className="mt-4 text-sm font-medium text-[var(--ink)]">{label}</p>
-                        <p className={`mt-1 text-xs ${done || active ? "text-[var(--accent-dark)]" : "text-[var(--text-muted)]"}`}>
-                          {state}
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--text-muted)]">{date || "\u00a0"}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
-
-            <section className="panel overflow-hidden">
-              <div className="panel-header">
-                <h2 className="text-base font-semibold text-[var(--ink)]">Documents & Agreements</h2>
-              </div>
-              <div className="divide-y divide-[var(--border)]">
-                {documentRows.map(([name, status, date]) => (
-                  <div key={name} className="grid grid-cols-[1fr_100px_76px] items-center gap-3 px-4 py-2.5 text-sm">
-                    <div className="flex items-center gap-3 text-[var(--ink)]">
-                      <FileText className="h-4 w-4" strokeWidth={1.8} />
-                      {name}
-                    </div>
-                    <span className={status === "Pending" ? "text-[var(--ink)]" : "text-[var(--accent-dark)]"}>
-                      {status}
-                    </span>
-                    <span className="text-right text-[var(--text-muted)]">{date}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="border-t border-[var(--border)] px-4 py-3">
-                <button className="text-sm font-medium text-[var(--accent-dark)]">View all documents</button>
-              </div>
-            </section>
-          </div>
-
-          <div className="grid gap-3 xl:grid-cols-[1.35fr_1fr]">
-            <section className="panel overflow-hidden">
-              <div className="panel-header">
-                <h2 className="text-base font-semibold text-[var(--ink)]">Tasks</h2>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="border-b border-[var(--border)] bg-[var(--surface-muted)] text-[var(--ink)]">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Task</th>
-                      <th className="px-4 py-3 font-medium">Owner</th>
-                      <th className="px-4 py-3 font-medium">Due Date</th>
-                      <th className="px-4 py-3 font-medium">Status</th>
-                      <th className="px-4 py-3 font-medium">Priority</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--border)]">
-                    {taskRows.map(([task, owner, due, status, priority]) => (
-                      <tr key={task}>
-                        <td className="px-4 py-3 text-[var(--ink)]">{task}</td>
-                        <td className="px-4 py-3 text-[var(--ink)]">{owner}</td>
-                        <td className="px-4 py-3 text-[var(--ink)]">{due}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex rounded border px-2 py-1 text-xs ${statusClass(status)}`}>
-                            {status}
-                          </span>
-                        </td>
-                        <td className={priority === "High" ? "px-4 py-3 text-[#d6421f]" : priority === "Medium" ? "px-4 py-3 text-[#c26b00]" : "px-4 py-3 text-[var(--text-muted)]"}>
-                          {priority}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="border-t border-[var(--border)] px-4 py-3">
-                <button className="text-sm font-medium text-[var(--accent-dark)]">View all tasks</button>
-              </div>
-            </section>
-
-            <section className="panel">
-              <div className="panel-header flex items-center justify-between">
-                <h2 className="text-base font-semibold text-[var(--ink)]">Client Profile Summary</h2>
-                <button className="text-sm font-medium text-[var(--accent-dark)]" onClick={() => setIsUpdateModalOpen(true)}>
-                  Edit
-                </button>
-              </div>
-              <div className="grid gap-6 px-4 py-4 text-sm md:grid-cols-2">
-                <dl className="grid grid-cols-[86px_1fr] gap-x-4 gap-y-2">
-                  <dt className="text-[var(--text-muted)]">Name</dt>
-                  <dd>{getFullName(user)}</dd>
-                  <dt className="text-[var(--text-muted)]">Date of Birth</dt>
-                  <dd>May 14, 1962 (62)</dd>
-                  <dt className="text-[var(--text-muted)]">Email</dt>
-                  <dd className="break-all">{user.email}</dd>
-                  <dt className="text-[var(--text-muted)]">Phone</dt>
-                  <dd>{user.phone_number || "(214) 555-0198"}</dd>
-                  <dt className="text-[var(--text-muted)]">Address</dt>
-                  <dd>1234 Maple Rd.<br />Dallas, TX 75201</dd>
-                </dl>
-                <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-2 border-l border-[var(--border)] pl-6">
-                  <dt className="text-[var(--text-muted)]">Citizenship</dt>
-                  <dd>U.S. Citizen</dd>
-                  <dt className="text-[var(--text-muted)]">Tax ID (SSN)</dt>
-                  <dd>XXX-XX-6789</dd>
-                  <dt className="text-[var(--text-muted)]">Marital Status</dt>
-                  <dd>Married</dd>
-                  <dt className="text-[var(--text-muted)]">Employment Status</dt>
-                  <dd>Retired</dd>
-                  <dt className="text-[var(--text-muted)]">Annual Income</dt>
-                  <dd>$120,000 - $150,000</dd>
-                  <dt className="text-[var(--text-muted)]">Net Worth</dt>
-                  <dd>$1,000,000 - $2,500,000</dd>
-                </dl>
-              </div>
-            </section>
-          </div>
-
-          <div className="grid gap-3 xl:grid-cols-[1.35fr_1fr]">
-            <section className="panel overflow-hidden">
-              <div className="panel-header">
-                <h2 className="text-base font-semibold text-[var(--ink)]">Activity Feed</h2>
-              </div>
-              <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-[var(--border)] bg-[var(--surface-muted)]">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Date</th>
-                    <th className="px-4 py-3 font-medium">User</th>
-                    <th className="px-4 py-3 font-medium">Activity</th>
-                    <th className="px-4 py-3 font-medium">Details</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border)]">
-                  {activityRows.map(([date, actor, activity, details]) => (
-                    <tr key={`${date}-${activity}`}>
-                      <td className="px-4 py-3">{date}</td>
-                      <td className="px-4 py-3">{actor}</td>
-                      <td className="px-4 py-3">{activity}</td>
-                      <td className="px-4 py-3 text-[var(--accent-dark)]">{details}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <div className="border-t border-[var(--border)] px-4 py-3">
-                <button className="text-sm font-medium text-[var(--accent-dark)]">View full activity</button>
-              </div>
-            </section>
-
-            <section className="panel">
-              <div className="panel-header flex items-center justify-between">
-                <h2 className="text-base font-semibold text-[var(--ink)]">Internal Notes</h2>
-                <button className="inline-flex h-8 items-center gap-2 rounded border border-[var(--accent)] px-3 text-sm font-medium text-[var(--accent-dark)]">
-                  <Plus className="h-4 w-4" /> Add Note
-                </button>
-              </div>
-              <div className="space-y-5 px-4 py-5 text-sm">
-                <div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-[var(--text-muted)]">Apr 18, 2025&nbsp;&nbsp; 2:15 PM <span className="mx-1">•</span> Sarah Thompson</p>
-                    <MoreHorizontal className="h-4 w-4" />
-                  </div>
-                  <p className="mt-2 text-[var(--ink)]">Client uploaded remaining documents. Waiting on e-signatures for agreements.</p>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-[var(--text-muted)]">Apr 17, 2025&nbsp;&nbsp; 4:20 PM <span className="mx-1">•</span> Sarah Thompson</p>
-                    <MoreHorizontal className="h-4 w-4" />
-                  </div>
-                  <p className="mt-2 text-[var(--ink)]">Spoke with client about IRA options and next steps.</p>
-                </div>
-              </div>
-              <div className="border-t border-[var(--border)] px-4 py-3">
-                <button className="text-sm font-medium text-[var(--accent-dark)]">View all notes</button>
-              </div>
-            </section>
-          </div>
-        </div>
+        ) : null}
       </div>
 
       <UpdateUserProfileModal
@@ -392,6 +510,11 @@ export default function AdminClientDetailPage() {
         onUpdated={(updatedUser) => {
           setUser(updatedUser);
           setIsUpdateModalOpen(false);
+          setNotice({
+            variant: "success",
+            title: "Profile Updated",
+            message: "Client profile was updated successfully.",
+          });
         }}
       />
     </div>

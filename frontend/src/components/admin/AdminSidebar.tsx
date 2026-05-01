@@ -26,24 +26,24 @@ const navItems: NavItem[] = [
     icon: Home,
     isActive: (pathname) => pathname === "/admin/clients",
   },
-  {
-    label: "Clients",
-    href: "/admin/clients",
-    icon: UserRound,
-    isActive: (pathname) => pathname.startsWith("/admin/clients/"),
-  },
-  {
-    label: "Documents",
-    href: "/admin/create",
-    icon: FileText,
-    isActive: (pathname) => pathname === "/admin/create",
-  },
-  {
-    label: "Reports",
-    href: "/admin/clients",
-    icon: BarChart3,
-    isActive: () => false,
-  },
+  // {
+  //   label: "Clients",
+  //   href: "/admin/clients",
+  //   icon: UserRound,
+  //   isActive: (pathname) => pathname.startsWith("/admin/clients/"),
+  // },
+  // {
+  //   label: "Documents",
+  //   href: "/admin/create",
+  //   icon: FileText,
+  //   isActive: (pathname) => pathname === "/admin/create",
+  // },
+  // {
+  //   label: "Reports",
+  //   href: "/admin/clients",
+  //   icon: BarChart3,
+  //   isActive: () => false,
+  // },
 ];
 
 export default function AdminSidebar() {
