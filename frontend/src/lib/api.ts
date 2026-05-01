@@ -71,3 +71,22 @@ export async function apiRequest<TResponse>(
 
   return (await response.json()) as TResponse;
 }
+
+export async function apiBlobRequest(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<Blob> {
+  const { body, ...requestInit } = options;
+  const headers = await buildHeaders(options, body);
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    ...requestInit,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(await getErrorMessage(response));
+  }
+
+  return response.blob();
+}

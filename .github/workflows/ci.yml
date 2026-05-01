@@ -62,7 +62,13 @@ jobs:
           QBO_BASE_URL: https://sandbox-quickbooks.api.intuit.com/v3
           QBO_INCOME_ACCOUNT_ID: your-qbo-income-account-id
           QBO_WEBHOOK_VERIFIER_TOKEN: your-qbo-webhook-verifier-token
+          S3_CONTRACT_BUCKET: your-contract-bucket
+          S3_CONTRACT_ENV: ci
+          AWS_REGION: us-east-1
         run: python -c "from app.main import app; print(app.title)"
+
+      - name: Run backend unit tests
+        run: python -m pytest
 
   frontend:
     name: Frontend Build
