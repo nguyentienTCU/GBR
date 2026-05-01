@@ -83,6 +83,27 @@ class ContractRepository:
 
         return None
 
+    def get_latest_completed_contract_by_user_id(
+        self,
+        user_id: str,
+    ) -> dict[str, Any] | None:
+        """Return the user's most recent completed contract, or None if none exists."""
+        result = (
+            self.supabase.table("contract")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("status", "completed")
+            .order("time_end", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        contracts = result.data or []
+        if contracts:
+            return contracts[0]
+
+        return None
+
     def create_contract(
         self,
         payload: ContractCreateRequest,
@@ -142,14 +163,19 @@ class ContractRepository:
     def mark_contract_completed(
         self,
         contract_id: str,
+        signed_file_url: str | None = None,
     ) -> dict[str, Any]:
         """Mark a contract as completed and stamp its completion time in UTC."""
+        update_payload = ContractUpdateRequest(
+            status="completed",
+            time_end=datetime.now(timezone.utc),
+        )
+        if signed_file_url:
+            update_payload.signed_file_url = signed_file_url
+
         return self.update_contract(
             contract_id,
-            ContractUpdateRequest(
-                status="completed",
-                time_end=datetime.now(timezone.utc),
-            ),
+            update_payload,
         )
 
 

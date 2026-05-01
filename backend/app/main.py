@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 # from starlette.middleware.sessions import SessionMiddleware
 
-from app.api.routes import users, docusign, quickbooks
+from app.api.routes import contracts, docusign, quickbooks, users
 from app.core.config import get_settings
 from app.core.logging_config import configure_logging
 
@@ -46,6 +46,7 @@ app.add_middleware(
 app.include_router(users.router)
 app.include_router(docusign.router)
 app.include_router(quickbooks.router)
+app.include_router(contracts.router)
 
 # -------------------------
 # Health check

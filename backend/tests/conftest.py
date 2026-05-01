@@ -38,6 +38,9 @@ def pytest_configure():
         "SMTP_PASSWORD": "smtp-pass",
         "SMTP_FROM_EMAIL": "noreply@example.com",
         "FRONTEND_URL": "http://localhost:3000",
+        "S3_CONTRACT_BUCKET": "contract-bucket",
+        "S3_CONTRACT_ENV": "local",
+        "AWS_REGION": "us-east-1",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)

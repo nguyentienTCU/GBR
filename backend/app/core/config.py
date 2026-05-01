@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     # frontend url
     frontend_url: str
 
+    # S3
+    s3_contract_bucket: str
+    s3_contract_env: str = "local"
+    aws_region: str = "us-east-1"
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

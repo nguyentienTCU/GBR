@@ -4,6 +4,7 @@ from functools import lru_cache
 import logging
 from typing import Any
 
+from botocore.exceptions import ClientError
 from docusign_esign import (
     ApiClient,
     EnvelopesApi,
@@ -18,6 +19,7 @@ from docusign_esign import TemplatesApi
 from pathlib import Path
 
 from app.core.config import get_settings
+from app.core.s3_client import S3Client
 from app.schemas.contracts import ContractUpdateRequest
 from app.schemas.docusign import (
     DocusignTokenResult,
@@ -59,6 +61,7 @@ class DocusignService:
         self.scopes = settings.docusign_scopes
         self.contract_repository = ContractRepository()
         self.user_repository = UserRepository()
+        self.s3_client = S3Client()
 
     def get_access_token(self) -> DocusignTokenResult:
         """Obtain a JWT access token for the configured user."""
@@ -312,9 +315,7 @@ class DocusignService:
                 f"DocuSign Connect account mismatch. Expected {self.account_id}, got {account_id}."
             )
 
-        contract = self.contract_repository.get_contract_by_envelope_id(
-            envelope_id,
-        )
+        contract = self.contract_repository.get_contract_by_envelope_id(envelope_id)
         if not contract:
             raise DocusignServiceError(
                 f"No contract found for envelope_id={envelope_id}."
@@ -328,7 +329,22 @@ class DocusignService:
             envelope_id,
         )
 
-        self.contract_repository.mark_contract_completed(contract["id"])
+        signed_file_url, signed_pdf = self._download_and_upload_signed_contract_pdf(
+            contract=contract,
+            envelope_id=envelope_id,
+        )
+        logger.info(
+            "%s signed contract uploaded contract_id=%s envelope_id=%s url=%s",
+            LOG_PREFIX,
+            contract["id"],
+            envelope_id,
+            signed_file_url,
+        )
+
+        self.contract_repository.mark_contract_completed(
+            contract["id"],
+            signed_file_url=signed_file_url,
+        )
         logger.info("%s contract marked completed contract_id=%s", LOG_PREFIX, contract["id"])
 
         self.user_repository.update_user_step(contract["user_id"], 1)
@@ -352,6 +368,106 @@ class DocusignService:
     def _get_signer_name(self, user: dict[str, Any]) -> str:
 
         return f"{user['first_name']} {user['last_name']}".strip()
+
+    def recover_signed_contract_pdf(self, contract: dict[str, Any]) -> bytes:
+        """Download a completed contract from DocuSign, upload it to S3, and persist its S3 URL."""
+        envelope_id = contract.get("envelope_id")
+        if not envelope_id:
+            raise DocusignServiceError("Contract does not have a DocuSign envelope ID.")
+
+        signed_file_url, signed_pdf = self._download_and_upload_signed_contract_pdf(
+            contract=contract,
+            envelope_id=envelope_id,
+        )
+        self.contract_repository.update_contract(
+            contract["id"],
+            ContractUpdateRequest(signed_file_url=signed_file_url),
+        )
+        logger.info(
+            "%s recovered signed contract contract_id=%s envelope_id=%s url=%s",
+            LOG_PREFIX,
+            contract["id"],
+            envelope_id,
+            signed_file_url,
+        )
+
+        return signed_pdf
+
+    def _download_and_upload_signed_contract_pdf(
+        self,
+        *,
+        contract: dict[str, Any],
+        envelope_id: str,
+    ) -> tuple[str, bytes]:
+        api_client = self.create_api_client()
+        envelopes_api = EnvelopesApi(api_client)
+        signed_pdf = self._download_signed_contract_pdf(
+            envelopes_api=envelopes_api,
+            envelope_id=envelope_id,
+        )
+        sign_file_key = self._build_signed_contract_s3_key(
+            user_id=contract["user_id"],
+            contract_id=contract["id"],
+            envelope_id=envelope_id,
+        )
+        try:
+            signed_file_url = self.s3_client.upload_pdf(
+                key=sign_file_key,
+                body=signed_pdf,
+            )
+        except ClientError as exc:
+            error = exc.response.get("Error", {})
+            message = error.get("Message") or str(exc)
+            raise DocusignServiceError(
+                f"Failed to upload signed contract PDF to S3: {message}"
+            ) from exc
+
+        return signed_file_url, signed_pdf
+
+    def _download_signed_contract_pdf(
+        self,
+        *,
+        envelopes_api: EnvelopesApi,
+        envelope_id: str,
+    ) -> bytes:
+        try:
+            document = envelopes_api.get_document(
+                account_id=self.account_id,
+                document_id="combined",
+                envelope_id=envelope_id,
+            )
+        except ApiException as e:
+            body = getattr(e, "body", "") or ""
+            raise DocusignServiceError(
+                f"Failed to download signed contract PDF: {body}"
+            ) from e
+
+        return self._coerce_document_to_bytes(document)
+
+    def _build_signed_contract_s3_key(
+        self,
+        *,
+        user_id: str,
+        contract_id: str,
+        envelope_id: str,
+    ) -> str:
+        return (
+            f"contracts/{settings.s3_contract_env}/users/{user_id}/contracts/"
+            f"{contract_id}/signed/{envelope_id}.pdf"
+        )
+
+    @staticmethod
+    def _coerce_document_to_bytes(document: Any) -> bytes:
+        if isinstance(document, bytes):
+            return document
+        if isinstance(document, bytearray):
+            return bytes(document)
+        if isinstance(document, str):
+            path = Path(document)
+            if path.exists():
+                return path.read_bytes()
+
+        raise DocusignServiceError("DocuSign document response was not PDF bytes.")
 
 @lru_cache
 def get_docusign_service() -> DocusignService:

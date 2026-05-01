@@ -20,7 +20,10 @@ class FakeContractRepository:
 
     def update_contract(self, contract_id, payload):
         self.updated.append((contract_id, payload))
-        self.contracts["user-1"]["envelope_id"] = payload.envelope_id
+        if payload.envelope_id is not None:
+            self.contracts["user-1"]["envelope_id"] = payload.envelope_id
+        if payload.signed_file_url is not None:
+            self.contracts["user-1"]["signed_file_url"] = payload.signed_file_url
         return self.contracts["user-1"]
 
     def get_contract_by_envelope_id(self, envelope_id):
@@ -28,9 +31,13 @@ class FakeContractRepository:
             return {"id": "contract-1", "user_id": "user-1", "envelope_id": envelope_id}
         return None
 
-    def mark_contract_completed(self, contract_id):
-        self.completed.append(contract_id)
-        return {"id": contract_id, "status": "completed"}
+    def mark_contract_completed(self, contract_id, signed_file_url=None):
+        self.completed.append((contract_id, signed_file_url))
+        return {
+            "id": contract_id,
+            "status": "completed",
+            "signed_file_url": signed_file_url,
+        }
 
 
 class FakeUserRepository:
@@ -56,6 +63,7 @@ def make_service(contract_repo=None, user_repo=None):
     service.account_id = "account-1"
     service.contract_repository = contract_repo or FakeContractRepository()
     service.user_repository = user_repo or FakeUserRepository()
+    service.s3_client = SimpleNamespace(upload_pdf=lambda key, body: f"s3://bucket/{key}")
     service.create_api_client = lambda: object()
     return service
 
@@ -107,10 +115,28 @@ def test_create_signing_session_rejects_unverified_user(monkeypatch):
     assert "User email is not verified" in str(exc_info.value)
 
 
-def test_process_connect_event_marks_contract_complete_and_advances_user():
+def test_process_connect_event_stores_signed_contract_marks_complete_and_advances_user(monkeypatch):
     contract_repo = FakeContractRepository()
     user_repo = FakeUserRepository()
     service = make_service(contract_repo=contract_repo, user_repo=user_repo)
+    uploads = []
+
+    class FakeEnvelopesApi:
+        def __init__(self, api_client):
+            self.api_client = api_client
+
+        def get_document(self, account_id, document_id, envelope_id):
+            assert account_id == "account-1"
+            assert document_id == "combined"
+            assert envelope_id == "envelope-1"
+            return b"signed-pdf"
+
+    def upload_pdf(key, body):
+        uploads.append((key, body))
+        return f"s3://contract-bucket/{key}"
+
+    monkeypatch.setattr(docusign_module, "EnvelopesApi", FakeEnvelopesApi)
+    service.s3_client = SimpleNamespace(upload_pdf=upload_pdf)
 
     service.process_connect_event(
         {
@@ -119,8 +145,64 @@ def test_process_connect_event_marks_contract_complete_and_advances_user():
         }
     )
 
-    assert contract_repo.completed == ["contract-1"]
+    assert uploads == [
+        (
+            "contracts/local/users/user-1/contracts/contract-1/signed/envelope-1.pdf",
+            b"signed-pdf",
+        )
+    ]
+    assert contract_repo.completed == [
+        (
+            "contract-1",
+            "s3://contract-bucket/contracts/local/users/user-1/contracts/contract-1/signed/envelope-1.pdf",
+        )
+    ]
     assert user_repo.updated_steps == [("user-1", 1)]
+
+
+def test_recover_signed_contract_pdf_downloads_uploads_and_updates_contract(monkeypatch):
+    contract_repo = FakeContractRepository()
+    contract_repo.contracts["user-1"] = {
+        "id": "contract-1",
+        "user_id": "user-1",
+        "envelope_id": "envelope-1",
+        "status": "completed",
+        "signed_file_url": None,
+    }
+    service = make_service(contract_repo=contract_repo)
+    uploads = []
+
+    class FakeEnvelopesApi:
+        def __init__(self, api_client):
+            self.api_client = api_client
+
+        def get_document(self, account_id, document_id, envelope_id):
+            assert account_id == "account-1"
+            assert document_id == "combined"
+            assert envelope_id == "envelope-1"
+            return b"recovered-pdf"
+
+    def upload_pdf(key, body):
+        uploads.append((key, body))
+        return f"s3://contract-bucket/{key}"
+
+    monkeypatch.setattr(docusign_module, "EnvelopesApi", FakeEnvelopesApi)
+    service.s3_client = SimpleNamespace(upload_pdf=upload_pdf)
+
+    result = service.recover_signed_contract_pdf(contract_repo.contracts["user-1"])
+
+    assert result == b"recovered-pdf"
+    assert uploads == [
+        (
+            "contracts/local/users/user-1/contracts/contract-1/signed/envelope-1.pdf",
+            b"recovered-pdf",
+        )
+    ]
+    assert contract_repo.updated[-1][0] == "contract-1"
+    assert (
+        contract_repo.updated[-1][1].signed_file_url
+        == "s3://contract-bucket/contracts/local/users/user-1/contracts/contract-1/signed/envelope-1.pdf"
+    )
 
 
 def test_process_connect_event_ignores_non_completed_events():

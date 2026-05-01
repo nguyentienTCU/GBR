@@ -110,7 +110,8 @@ def test_create_invoice_reuses_active_existing_invoice_and_resends_email():
 
     async def get_invoice_by_id(invoice_id):
         assert invoice_id == "invoice-1"
-        return {"Id": "invoice-1", "DueDate": date.today().isoformat(), "Balance": "100.00"}
+        future_due_date = date.today() + timedelta(days=30)
+        return {"Id": "invoice-1", "DueDate": future_due_date.isoformat(), "Balance": "100.00"}
 
     async def qbo_post_without_body(connection, path, params=None):
         sent_paths.append((path, params))

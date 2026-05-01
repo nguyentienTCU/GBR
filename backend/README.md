@@ -64,6 +64,12 @@ QBO_TOKEN_URL=https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer
 QBO_BASE_URL=https://sandbox-quickbooks.api.intuit.com/v3
 QBO_INCOME_ACCOUNT_ID=
 QBO_WEBHOOK_VERIFIER_TOKEN=
+
+S3_CONTRACT_BUCKET=
+S3_CONTRACT_ENV=local
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
 ```
 
 Notes:
